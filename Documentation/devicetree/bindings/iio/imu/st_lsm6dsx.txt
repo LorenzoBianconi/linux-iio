@@ -1,0 +1,20 @@
+* ST_LSM6DSX driver for STM LSM6DS3-LSM6DSM 6-axis (acc + gyro) Mems sensor
+
+Required properties:
+- compatible: must be one of:
+  "st,lsm6ds3"
+  "st,lsm6dsm"
+- reg: i2c address of the sensor / spi cs line
+
+Optional properties:
+- interrupts: interrupt mapping for GPIO IRQ
+- interrupt-parent: should be the phandle for the interrupt controller
+
+Example:
+
+lsm6dsm@6b {
+	compatible = "st,lsm6dsm";
+	reg = <0x6b>;
+	interrupt-parent = <&gpio0>;
+	interrupts = <0 IRQ_TYPE_EDGE_RISING>;
+};
