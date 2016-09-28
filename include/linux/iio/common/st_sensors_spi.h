@@ -14,6 +14,16 @@
 #include <linux/spi/spi.h>
 #include <linux/iio/common/st_sensors.h>
 
+#ifdef CONFIG_OF
+void st_sensors_of_spi_probe(struct spi_device *spi,
+			     const struct of_device_id *match);
+#else
+static inline void st_sensors_of_spi_probe(struct spi_device *spi,
+					   const struct of_device_id *match)
+{
+}
+#endif
+
 void st_sensors_spi_configure(struct iio_dev *indio_dev,
 			struct spi_device *spi, struct st_sensor_data *sdata);
 

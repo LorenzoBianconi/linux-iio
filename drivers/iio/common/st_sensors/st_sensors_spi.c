@@ -12,6 +12,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/iio/iio.h>
+#include <linux/of_device.h>
 
 #include <linux/iio/common/st_sensors_spi.h>
 
@@ -102,6 +103,23 @@ static const struct st_sensor_transfer_function st_sensors_tf_spi = {
 	.write_byte = st_sensors_spi_write_byte,
 	.read_multiple_byte = st_sensors_spi_read_multiple_byte,
 };
+
+#ifdef CONFIG_OF
+void st_sensors_of_spi_probe(struct spi_device *spi,
+			     const struct of_device_id *match)
+{
+	const struct of_device_id *of_id;
+
+	of_id = of_match_device(match, &spi->dev);
+	if (!of_id)
+		return;
+
+	/* The name from the OF match takes precedence if present */
+	strncpy(spi->modalias, of_id->data, sizeof(spi->modalias));
+	spi->modalias[sizeof(spi->modalias) - 1] = '\0';
+}
+EXPORT_SYMBOL(st_sensors_of_spi_probe);
+#endif
 
 void st_sensors_spi_configure(struct iio_dev *indio_dev,
 			struct spi_device *spi, struct st_sensor_data *sdata)
