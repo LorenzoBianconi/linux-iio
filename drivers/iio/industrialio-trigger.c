@@ -721,7 +721,7 @@ EXPORT_SYMBOL(iio_trigger_using_own);
  * iio_trigger_validate_own_device - Check if a trigger and IIO device belong to
  *  the same device
  * @trig: The IIO trigger to check
- * @indio_devdev: the IIO device to check
+ * @indio_dev: the IIO device to check
  *
  * This function can be used as the validate_device callback for triggers that
  * can only be attached to their own device.
