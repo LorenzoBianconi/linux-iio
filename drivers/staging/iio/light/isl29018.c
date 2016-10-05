@@ -268,26 +268,30 @@ static int isl29018_read_proximity_ir(struct isl29018_chip *chip, int scheme,
 	return 0;
 }
 
-static ssize_t isl29018_show_scale_available(struct device *dev,
-				    struct device_attribute *attr, char *buf)
+static ssize_t in_illuminance_scale_available_show
+			(struct device *dev, struct device_attribute *attr,
+			 char *buf)
 {
 	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
 	struct isl29018_chip *chip = iio_priv(indio_dev);
 	unsigned int i;
 	int len = 0;
 
+	mutex_lock(&chip->lock);
 	for (i = 0; i < ARRAY_SIZE(isl29018_scales[chip->int_time]); ++i)
 		len += sprintf(buf + len, "%d.%06d ",
 			       isl29018_scales[chip->int_time][i].scale,
 			       isl29018_scales[chip->int_time][i].uscale);
+	mutex_unlock(&chip->lock);
 
 	buf[len - 1] = '\n';
 
 	return len;
 }
 
-static ssize_t isl29018_show_int_time_available(struct device *dev,
-				       struct device_attribute *attr, char *buf)
+static ssize_t in_illuminance_integration_time_available_show
+			(struct device *dev, struct device_attribute *attr,
+			 char *buf)
 {
 	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
 	struct isl29018_chip *chip = iio_priv(indio_dev);
@@ -303,9 +307,9 @@ static ssize_t isl29018_show_int_time_available(struct device *dev,
 	return len;
 }
 
-static ssize_t isl29018_show_prox_infrared_suppression(struct device *dev,
-					      struct device_attribute *attr,
-					      char *buf)
+static ssize_t proximity_on_chip_ambient_infrared_suppression_show
+			(struct device *dev, struct device_attribute *attr,
+			 char *buf)
 {
 	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
 	struct isl29018_chip *chip = iio_priv(indio_dev);
@@ -317,9 +321,9 @@ static ssize_t isl29018_show_prox_infrared_suppression(struct device *dev,
 	return sprintf(buf, "%d\n", chip->prox_scheme);
 }
 
-static ssize_t isl29018_store_prox_infrared_suppression(struct device *dev,
-					       struct device_attribute *attr,
-					       const char *buf, size_t count)
+static ssize_t proximity_on_chip_ambient_infrared_suppression_store
+			(struct device *dev, struct device_attribute *attr,
+			 const char *buf, size_t count)
 {
 	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
 	struct isl29018_chip *chip = iio_priv(indio_dev);
@@ -351,6 +355,10 @@ static int isl29018_write_raw(struct iio_dev *indio_dev,
 	int ret = -EINVAL;
 
 	mutex_lock(&chip->lock);
+	if (chip->suspended) {
+		ret = -EBUSY;
+		goto write_done;
+	}
 	switch (mask) {
 	case IIO_CHAN_INFO_CALIBSCALE:
 		if (chan->type == IIO_LIGHT) {
@@ -370,8 +378,9 @@ static int isl29018_write_raw(struct iio_dev *indio_dev,
 	default:
 		break;
 	}
-	mutex_unlock(&chip->lock);
 
+write_done:
+	mutex_unlock(&chip->lock);
 	return ret;
 }
 
@@ -386,8 +395,8 @@ static int isl29018_read_raw(struct iio_dev *indio_dev,
 
 	mutex_lock(&chip->lock);
 	if (chip->suspended) {
-		mutex_unlock(&chip->lock);
-		return -EBUSY;
+		ret = -EBUSY;
+		goto read_done;
 	}
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
@@ -434,6 +443,8 @@ static int isl29018_read_raw(struct iio_dev *indio_dev,
 	default:
 		break;
 	}
+
+read_done:
 	mutex_unlock(&chip->lock);
 	return ret;
 }
@@ -471,14 +482,9 @@ static const struct iio_chan_spec isl29023_channels[] = {
 	ISL29018_IR_CHANNEL,
 };
 
-static IIO_DEVICE_ATTR(in_illuminance_integration_time_available, S_IRUGO,
-		       isl29018_show_int_time_available, NULL, 0);
-static IIO_DEVICE_ATTR(in_illuminance_scale_available, S_IRUGO,
-		      isl29018_show_scale_available, NULL, 0);
-static IIO_DEVICE_ATTR(proximity_on_chip_ambient_infrared_suppression,
-					S_IRUGO | S_IWUSR,
-					isl29018_show_prox_infrared_suppression,
-					isl29018_store_prox_infrared_suppression, 0);
+static IIO_DEVICE_ATTR_RO(in_illuminance_integration_time_available, 0);
+static IIO_DEVICE_ATTR_RO(in_illuminance_scale_available, 0);
+static IIO_DEVICE_ATTR_RW(proximity_on_chip_ambient_infrared_suppression, 0);
 
 #define ISL29018_DEV_ATTR(name) (&iio_dev_attr_##name.dev_attr.attr)
 
