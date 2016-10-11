@@ -307,6 +307,24 @@ static ssize_t in_illuminance_integration_time_available_show
 	return len;
 }
 
+/*
+ * From ISL29018 Data Sheet (FN6619.4, Oct 8, 2012) regarding the
+ * infrared suppression:
+ *
+ *   Proximity Sensing Scheme: Bit 7. This bit programs the function
+ * of the proximity detection. Logic 0 of this bit, Scheme 0, makes
+ * full n (4, 8, 12, 16) bits (unsigned) proximity detection. The range
+ * of Scheme 0 proximity count is from 0 to 2^n. Logic 1 of this bit,
+ * Scheme 1, makes n-1 (3, 7, 11, 15) bits (2's complementary)
+ * proximity_less_ambient detection. The range of Scheme 1
+ * proximity count is from -2^(n-1) to 2^(n-1) . The sign bit is extended
+ * for resolutions less than 16. While Scheme 0 has wider dynamic
+ * range, Scheme 1 proximity detection is less affected by the
+ * ambient IR noise variation.
+ *
+ * 0 Sensing IR from LED and ambient
+ * 1 Sensing IR from LED with ambient IR rejection
+ */
 static ssize_t proximity_on_chip_ambient_infrared_suppression_show
 			(struct device *dev, struct device_attribute *attr,
 			 char *buf)
@@ -381,6 +399,7 @@ static int isl29018_write_raw(struct iio_dev *indio_dev,
 
 write_done:
 	mutex_unlock(&chip->lock);
+
 	return ret;
 }
 
@@ -446,6 +465,7 @@ static int isl29018_read_raw(struct iio_dev *indio_dev,
 
 read_done:
 	mutex_unlock(&chip->lock);
+
 	return ret;
 }
 
@@ -509,30 +529,6 @@ static const struct attribute_group isl29023_group = {
 	.attrs = isl29023_attributes,
 };
 
-static int isl29035_detect(struct isl29018_chip *chip)
-{
-	int status;
-	unsigned int id;
-	struct device *dev = regmap_get_device(chip->regmap);
-
-	status = regmap_read(chip->regmap, ISL29035_REG_DEVICE_ID, &id);
-	if (status < 0) {
-		dev_err(dev,
-			"Error reading ID register with error %d\n",
-			status);
-		return status;
-	}
-
-	id = (id & ISL29035_DEVICE_ID_MASK) >> ISL29035_DEVICE_ID_SHIFT;
-
-	if (id != ISL29035_DEVICE_ID)
-		return -ENODEV;
-
-	/* Clear brownout bit */
-	return regmap_update_bits(chip->regmap, ISL29035_REG_DEVICE_ID,
-				  ISL29035_BOUT_MASK, 0);
-}
-
 enum {
 	isl29018,
 	isl29023,
@@ -545,12 +541,31 @@ static int isl29018_chip_init(struct isl29018_chip *chip)
 	struct device *dev = regmap_get_device(chip->regmap);
 
 	if (chip->type == isl29035) {
-		status = isl29035_detect(chip);
+		unsigned int id;
+
+		status = regmap_read(chip->regmap, ISL29035_REG_DEVICE_ID, &id);
+		if (status < 0) {
+			dev_err(dev,
+				"Error reading ID register with error %d\n",
+				status);
+			return status;
+		}
+
+		id = (id & ISL29035_DEVICE_ID_MASK) >> ISL29035_DEVICE_ID_SHIFT;
+
+		if (id != ISL29035_DEVICE_ID)
+			return -ENODEV;
+
+		/* Clear brownout bit */
+		status = regmap_update_bits(chip->regmap,
+					    ISL29035_REG_DEVICE_ID,
+					    ISL29035_BOUT_MASK, 0);
 		if (status < 0)
 			return status;
 	}
 
-	/* Code added per Intersil Application Note 1534:
+	/*
+	 * Code added per Intersil Application Note 1534:
 	 *     When VDD sinks to approximately 1.8V or below, some of
 	 * the part's registers may change their state. When VDD
 	 * recovers to 2.25V (or greater), the part may thus be in an
@@ -577,7 +592,8 @@ static int isl29018_chip_init(struct isl29018_chip *chip)
 		return status;
 	}
 
-	/* See Intersil AN1534 comments above.
+	/*
+	 * See Intersil AN1534 comments above.
 	 * "Operating Mode" (COMMAND1) register is reprogrammed when
 	 * data is read from the device.
 	 */
@@ -600,12 +616,10 @@ static int isl29018_chip_init(struct isl29018_chip *chip)
 
 	status = isl29018_set_integration_time(chip,
 			isl29018_int_utimes[chip->type][chip->int_time]);
-	if (status < 0) {
+	if (status < 0)
 		dev_err(dev, "Init of isl29018 fails\n");
-		return status;
-	}
 
-	return 0;
+	return status;
 }
 
 static const struct iio_info isl29018_info = {
@@ -708,6 +722,7 @@ static int isl29018_probe(struct i2c_client *client,
 	indio_dev = devm_iio_device_alloc(&client->dev, sizeof(*chip));
 	if (!indio_dev)
 		return -ENOMEM;
+
 	chip = iio_priv(indio_dev);
 
 	i2c_set_clientdata(client, indio_dev);
@@ -747,6 +762,7 @@ static int isl29018_probe(struct i2c_client *client,
 	indio_dev->name = name;
 	indio_dev->dev.parent = &client->dev;
 	indio_dev->modes = INDIO_DIRECT_MODE;
+
 	return devm_iio_device_register(&client->dev, indio_dev);
 }
 
@@ -757,13 +773,15 @@ static int isl29018_suspend(struct device *dev)
 
 	mutex_lock(&chip->lock);
 
-	/* Since this driver uses only polling commands, we are by default in
+	/*
+	 * Since this driver uses only polling commands, we are by default in
 	 * auto shutdown (ie, power-down) mode.
 	 * So we do not have much to do here.
 	 */
 	chip->suspended = true;
 
 	mutex_unlock(&chip->lock);
+
 	return 0;
 }
 
@@ -779,6 +797,7 @@ static int isl29018_resume(struct device *dev)
 		chip->suspended = false;
 
 	mutex_unlock(&chip->lock);
+
 	return err;
 }
 
@@ -802,7 +821,6 @@ static const struct i2c_device_id isl29018_id[] = {
 	{"isl29035", isl29035},
 	{}
 };
-
 MODULE_DEVICE_TABLE(i2c, isl29018_id);
 
 static const struct of_device_id isl29018_of_match[] = {

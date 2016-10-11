@@ -52,6 +52,26 @@ config BMC150_ACCEL_SPI
 	tristate
 	select REGMAP_SPI
 
+config DA280
+	tristate "MiraMEMS DA280 3-axis 14-bit digital accelerometer driver"
+	depends on I2C
+	help
+	  Say yes here to build support for the MiraMEMS DA280 3-axis 14-bit
+	  digital accelerometer.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called da280.
+
+config DA311
+	tristate "MiraMEMS DA311 3-axis 12-bit digital accelerometer driver"
+	depends on I2C
+	help
+	  Say yes here to build support for the MiraMEMS DA311 3-axis 12-bit
+	  digital accelerometer.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called da311.
+
 config DMARD06
 	tristate "Domintech DMARD06 Digital Accelerometer Driver"
 	depends on OF || COMPILE_TEST
@@ -72,6 +92,16 @@ config DMARD09
 
 	  Choosing M will build the driver as a module. If so, the module
 	  will be called dmard09.
+
+config DMARD10
+	tristate "Domintech DMARD10 3-axis Accelerometer Driver"
+	depends on I2C
+	help
+	  Say yes here to get support for the Domintech DMARD10 3-axis
+	  accelerometer.
+
+	  Choosing M will build the driver as a module. If so, the module
+	  will be called dmard10.
 
 config HID_SENSOR_ACCEL_3D
 	depends on HID_SENSOR_HUB
