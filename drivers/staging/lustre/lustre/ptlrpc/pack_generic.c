@@ -42,11 +42,14 @@
 
 #include "../../include/linux/libcfs/libcfs.h"
 
+#include "../include/lustre/ll_fiemap.h"
+
+#include "../include/llog_swab.h"
+#include "../include/lustre_net.h"
+#include "../include/lustre_swab.h"
+#include "../include/obd_cksum.h"
 #include "../include/obd_support.h"
 #include "../include/obd_class.h"
-#include "../include/lustre_net.h"
-#include "../include/obd_cksum.h"
-#include "../include/lustre/ll_fiemap.h"
 
 #include "ptlrpc_internal.h"
 
@@ -466,6 +469,7 @@ int lustre_shrink_msg(struct lustre_msg *msg, int segment,
 	default:
 		LASSERTF(0, "incorrect message magic: %08x\n", msg->lm_magic);
 	}
+	return 0;
 }
 EXPORT_SYMBOL(lustre_shrink_msg);
 

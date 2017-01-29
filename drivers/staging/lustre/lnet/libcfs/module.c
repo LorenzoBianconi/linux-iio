@@ -365,14 +365,6 @@ static struct ctl_table lnet_table[] = {
 		.mode     = 0444,
 		.proc_handler = &proc_cpt_table,
 	},
-
-	{
-		.procname = "upcall",
-		.data     = lnet_upcall,
-		.maxlen   = sizeof(lnet_upcall),
-		.mode     = 0644,
-		.proc_handler = &proc_dostring,
-	},
 	{
 		.procname = "debug_log_upcall",
 		.data     = lnet_debug_log_upcall,
@@ -496,10 +488,10 @@ static const struct file_operations lnet_debugfs_file_operations_wo = {
 
 static const struct file_operations *lnet_debugfs_fops_select(umode_t mode)
 {
-	if (!(mode & S_IWUGO))
+	if (!(mode & 0222))
 		return &lnet_debugfs_file_operations_ro;
 
-	if (!(mode & S_IRUGO))
+	if (!(mode & 0444))
 		return &lnet_debugfs_file_operations_wo;
 
 	return &lnet_debugfs_file_operations_rw;
