@@ -940,8 +940,8 @@ static int stm32_adc_dma_request(struct iio_dev *indio_dev)
 					 STM32_DMA_BUFFER_SIZE,
 					 &adc->rx_dma_buf, GFP_KERNEL);
 	if (!adc->rx_buf) {
-		goto err_release;
 		ret = -ENOMEM;
+		goto err_release;
 	}
 
 	/* Configure DMA channel to read data register */

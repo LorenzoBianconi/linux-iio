@@ -22,7 +22,7 @@
 #define VC_AUDIO_SERVER_NAME  MAKE_FOURCC("AUDS")
 
 /* Maximum message length */
-#define VC_AUDIO_MAX_MSG_LEN  (sizeof( VC_AUDIO_MSG_T ))
+#define VC_AUDIO_MAX_MSG_LEN  (sizeof(VC_AUDIO_MSG_T))
 
 /*
  *  List of screens that are currently supported
@@ -74,13 +74,8 @@ struct vc_audio_stop {
 /* configure the write audio samples */
 struct vc_audio_write {
 	u32 count; // in bytes
-#if defined(CONFIG_64BIT)
-	u32 callbackl;
-	u32 callbackh;
-#else
-	void *callback;
-	void *cookie;
-#endif
+	u32 cookie1;
+	u32 cookie2;
 	s16 silence;
 	s16 max_packet;
 };
@@ -93,13 +88,8 @@ struct vc_audio_result {
 /* Generic result for a request (VC->HOST) */
 struct vc_audio_complete {
 	s32 count; // Success value
-#if defined(CONFIG_64BIT)
-	u32 callbackl;
-	u32 callbackh;
-#else
-	void *callback;
-	void *cookie;
-#endif
+	u32 cookie1;
+	u32 cookie2;
 };
 
 /* Message header for all messages in HOST->VC direction */
