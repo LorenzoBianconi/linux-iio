@@ -336,6 +336,7 @@ static int ad9832_probe(struct spi_device *spi)
 
 	st->mclk = pdata->mclk;
 	st->spi = spi;
+	mutex_init(&st->lock);
 
 	indio_dev->dev.parent = &spi->dev;
 	indio_dev->name = spi_get_device_id(spi)->name;
