@@ -79,9 +79,8 @@ static bool ia_css_mipi_is_source_port_valid(struct ia_css_pipe *pipe,
 	if (ret) {
 		assert(port < max_ports);
 
-		if (port >= max_ports) {
+		if (port >= max_ports)
 			ret = false;
-		}
 	}
 
 	*pport = port;
@@ -209,7 +208,6 @@ ia_css_mipi_frame_calculate_size(const unsigned int width,
 	*  payload lines.
 	*/
 
-
 	words_per_odd_line = (odd_line_bytes + 3) >> 2;
 		/* ceil(odd_line_bytes/4); word = 4 bytes */
 	words_per_even_line  = (even_line_bytes  + 3) >> 2;
@@ -250,7 +248,6 @@ ia_css_mipi_frame_enable_check_on_size(const enum ia_css_csi2_port port,
 
 	OP___assert(port < N_CSI_PORTS);
 	OP___assert(size_mem_words != 0);
-
 
 	for (idx = 0; idx < IA_CSS_MIPI_SIZE_CHECK_MAX_NOF_ENTRIES_PER_PORT &&
 		my_css.mipi_sizes_for_check[port][idx] != 0;

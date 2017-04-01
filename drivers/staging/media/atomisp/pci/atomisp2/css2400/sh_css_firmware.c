@@ -74,7 +74,7 @@ static struct fw_param *fw_minibuffer;
 
 char *sh_css_get_fw_version(void)
 {
-	return(FW_rel_ver_name);
+	return FW_rel_ver_name;
 }
 
 
@@ -95,7 +95,7 @@ setup_binary(struct ia_css_fw_info *fw, const char *fw_data, struct ia_css_fw_in
 
 	*sh_css_fw = *fw;
 
-#if defined(C_RUN) || defined(HRT_UNSCHED)
+#if defined(HRT_UNSCHED)
 	sh_css_fw->blob.code = sh_css_malloc(1);
 #else
 	sh_css_fw->blob.code = sh_css_malloc(fw->blob.size);
@@ -122,7 +122,7 @@ sh_css_load_blob_info(const char *fw, const struct ia_css_fw_info *bi, struct ia
 	/* Special case: only one binary in fw */
 	if (bi == NULL) bi = (const struct ia_css_fw_info *)fw;
 
-	name = (const char *)fw + bi->blob.prog_name_offset;
+	name = fw + bi->blob.prog_name_offset;
 	blob = (const unsigned char *)fw + bi->blob.offset;
 
 	/* sanity check */
@@ -201,7 +201,7 @@ sh_css_check_firmware_version(const char *fw_data)
 	struct sh_css_fw_bi_file_h *file_header;
 
 	firmware_header = (struct firmware_header *)fw_data;
-	file_header = (struct sh_css_fw_bi_file_h *)&firmware_header->file_header;
+	file_header = &firmware_header->file_header;
 
 	if (strcmp(file_header->version, release_version) != 0) {
 		return false;
@@ -221,8 +221,8 @@ sh_css_load_firmware(const char *fw_data,
 	bool valid_firmware = false;
 
 	firmware_header = (struct firmware_header *)fw_data;
-	file_header = (struct sh_css_fw_bi_file_h *)&firmware_header->file_header;
-	binaries = (struct ia_css_fw_info *)&firmware_header->binary_header;
+	file_header = &firmware_header->file_header;
+	binaries = &firmware_header->binary_header;
 	strncpy(FW_rel_ver_name, file_header->version, min(sizeof(FW_rel_ver_name), sizeof(file_header->version)) - 1);
 	valid_firmware = sh_css_check_firmware_version(fw_data);
 	if (!valid_firmware) {

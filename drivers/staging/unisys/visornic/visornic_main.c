@@ -141,6 +141,43 @@ struct visornic_devdata {
 	struct uiscmdrsp cmdrsp[SIZEOF_CMDRSP];
 };
 
+/* Returns next non-zero index on success or 0 on failure (i.e. out of room). */
+static inline u16
+add_physinfo_entries(u64 inp_pfn, u16 inp_off, u32 inp_len, u16 index,
+		     u16 max_pi_arr_entries, struct phys_info pi_arr[])
+{
+	u32 len;
+	u16 i, firstlen;
+
+	firstlen = PI_PAGE_SIZE - inp_off;
+	if (inp_len <= firstlen) {
+		/* The input entry spans only one page - add as is. */
+		if (index >= max_pi_arr_entries)
+			return 0;
+		pi_arr[index].pi_pfn = inp_pfn;
+		pi_arr[index].pi_off = (u16)inp_off;
+		pi_arr[index].pi_len = (u16)inp_len;
+		return index + 1;
+	}
+
+	/* This entry spans multiple pages. */
+	for (len = inp_len, i = 0; len;
+		len -= pi_arr[index + i].pi_len, i++) {
+		if (index + i >= max_pi_arr_entries)
+			return 0;
+		pi_arr[index + i].pi_pfn = inp_pfn + i;
+		if (i == 0) {
+			pi_arr[index].pi_off = inp_off;
+			pi_arr[index].pi_len = firstlen;
+		} else {
+			pi_arr[index + i].pi_off = 0;
+			pi_arr[index + i].pi_len =
+			    (u16)MINNUM(len, (u32)PI_PAGE_SIZE);
+		}
+	}
+	return index + i;
+}
+
 /*
  *	visor_copy_fragsinfo_from_skb(
  *	@skb_in: skbuff that we are pulling the frags from
@@ -372,7 +409,7 @@ alloc_rcv_buf(struct net_device *netdev)
  *	Send the skb to the IO Partition.
  *	Returns void
  */
-static inline void
+static void
 post_skb(struct uiscmdrsp *cmdrsp,
 	 struct visornic_devdata *devdata, struct sk_buff *skb)
 {
@@ -723,8 +760,8 @@ static unsigned long devdata_xmits_outstanding(struct visornic_devdata *devdata)
  *      Returns true iff the number of unacked xmits sent to
  *      the IO partition is >= high_watermark.
  */
-static inline bool vnic_hit_high_watermark(struct visornic_devdata *devdata,
-					   ulong high_watermark)
+static bool vnic_hit_high_watermark(struct visornic_devdata *devdata,
+				    ulong high_watermark)
 {
 	return (devdata_xmits_outstanding(devdata) >= high_watermark);
 }
@@ -739,8 +776,8 @@ static inline bool vnic_hit_high_watermark(struct visornic_devdata *devdata,
  *      Returns true iff the number of unacked xmits sent to
  *      the IO partition is <= low_watermark.
  */
-static inline bool vnic_hit_low_watermark(struct visornic_devdata *devdata,
-					  ulong low_watermark)
+static bool vnic_hit_low_watermark(struct visornic_devdata *devdata,
+				   ulong low_watermark)
 {
 	return (devdata_xmits_outstanding(devdata) <= low_watermark);
 }
@@ -1030,7 +1067,7 @@ visornic_xmit_timeout(struct net_device *netdev)
  *	we are finished with them.
  *	Returns 0 for success, -1 for error.
  */
-static inline int
+static int
 repost_return(struct uiscmdrsp *cmdrsp, struct visornic_devdata *devdata,
 	      struct sk_buff *skb, struct net_device *netdev)
 {

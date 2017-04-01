@@ -67,7 +67,6 @@
 #include "math_support.h" /* CEIL_DIV */
 #if defined(HAS_INPUT_FORMATTER_VERSION_2) || defined(USE_INPUT_SYSTEM_VERSION_2401)
 #include "input_system.h"	/* input_formatter_reg_load */
-#include "gp_device.h"		/* gp_device_reg_load */
 #endif
 #if defined(USE_INPUT_SYSTEM_VERSION_2) || defined(USE_INPUT_SYSTEM_VERSION_2401)
 #include "ia_css_tagger_common.h"
@@ -177,7 +176,7 @@ void ia_css_debug_dtrace(unsigned int level, const char *fmt, ...)
 	va_end(ap);
 }
 
-#if !defined(C_RUN) && !defined(HRT_UNSCHED)
+#if !defined(HRT_UNSCHED)
 static void debug_dump_long_array_formatted(
 	const sp_ID_t sp_id,
 	hrt_address stack_sp_addr,
@@ -255,7 +254,7 @@ void ia_css_debug_dump_sp_stack_info(void)
 void ia_css_debug_dump_sp_stack_info(void)
 {
 }
-#endif /* #if __HIVECC */
+#endif /* #if !HRT_UNSCHED */
 
 
 void ia_css_debug_set_dtrace_level(const unsigned int trace_level)

@@ -29,7 +29,7 @@
 
 #define CURRENT_FILE_PC VISOR_BUS_PC_visorchipset_c
 
-#define POLLJIFFIES_CONTROLVMCHANNEL_FAST   1
+#define POLLJIFFIES_CONTROLVMCHANNEL_FAST 1
 #define POLLJIFFIES_CONTROLVMCHANNEL_SLOW 100
 
 #define MAX_CONTROLVM_PAYLOAD_BYTES (1024 * 128)
@@ -1313,7 +1313,7 @@ chipset_notready_uevent(struct controlvm_message_header *msg_hdr)
 	return 0;
 }
 
-static inline unsigned int
+static unsigned int
 issue_vmcall_io_controlvm_addr(u64 *control_addr, u32 *control_bytes)
 {
 	struct vmcall_io_controlvm_addr_params params;
@@ -1321,7 +1321,7 @@ issue_vmcall_io_controlvm_addr(u64 *control_addr, u32 *control_bytes)
 	u64 physaddr;
 
 	physaddr = virt_to_phys(&params);
-	ISSUE_IO_VMCALL(VMCALL_IO_CONTROLVM_ADDR, physaddr, result);
+	ISSUE_IO_VMCALL(VMCALL_CONTROLVM_ADDR, physaddr, result);
 	if (VMCALL_SUCCESSFUL(result)) {
 		*control_addr = params.address;
 		*control_bytes = params.channel_bytes;
@@ -1493,24 +1493,6 @@ device_resume_response(struct visor_device *dev_info, int response)
 
 	kfree(dev_info->pending_msg_hdr);
 	dev_info->pending_msg_hdr = NULL;
-}
-
-static inline s64 issue_vmcall_query_guest_virtual_time_offset(void)
-{
-	u64 result = VMCALL_SUCCESS;
-	u64 physaddr = 0;
-
-	ISSUE_IO_VMCALL(VMCALL_QUERY_GUEST_VIRTUAL_TIME_OFFSET, physaddr,
-			result);
-	return result;
-}
-
-static inline int issue_vmcall_update_physical_time(u64 adjustment)
-{
-	int result = VMCALL_SUCCESS;
-
-	ISSUE_IO_VMCALL(VMCALL_UPDATE_PHYSICAL_TIME, adjustment, result);
-	return result;
 }
 
 static struct parser_context *

@@ -33,7 +33,6 @@
 #include "ia_css_rmgr.h"
 #include "ia_css_debug.h"
 #include "ia_css_debug_pipe.h"
-#include "ia_css_memory_access.h"
 #include "ia_css_device_access.h"
 #include "device_access.h"
 #include "sh_css_legacy.h"
@@ -1589,7 +1588,7 @@ static bool sh_css_setup_blctrl_config(const struct ia_css_fw_info *fw,
 	blctrl_cfg->bl_entry = 0;
 	blctrl_cfg->program_name = (char *)(program);
 
-#if !defined(C_RUN) && !defined(HRT_UNSCHED)
+#if !defined(HRT_UNSCHED)
 	blctrl_cfg->ddr_data_offset =  fw->blob.data_source;
 	blctrl_cfg->dmem_data_addr = fw->blob.data_target;
 	blctrl_cfg->dmem_bss_addr = fw->blob.bss_target;
@@ -1616,7 +1615,7 @@ static bool sh_css_setup_spctrl_config(const struct ia_css_fw_info *fw,
 	spctrl_cfg->sp_entry = 0;
 	spctrl_cfg->program_name = (char *)(program);
 
-#if !defined(C_RUN) && !defined(HRT_UNSCHED)
+#if !defined(HRT_UNSCHED)
 	spctrl_cfg->ddr_data_offset =  fw->blob.data_source;
 	spctrl_cfg->dmem_data_addr = fw->blob.data_target;
 	spctrl_cfg->dmem_bss_addr = fw->blob.bss_target;
@@ -1689,8 +1688,6 @@ ia_css_load_firmware(const struct ia_css_env *env,
 		return IA_CSS_ERR_INVALID_ARGUMENTS;
 
 	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "ia_css_load_firmware() enter\n");
-
-	ia_css_memory_access_init(&env->css_mem_env);
 
 	/* make sure we initialize my_css */
 	if ((my_css.malloc != env->cpu_mem_env.alloc) ||
@@ -1791,7 +1788,6 @@ ia_css_init(const struct ia_css_env *env,
 	ia_css_queue_map_init();
 
 	ia_css_device_access_init(&env->hw_access_env);
-	ia_css_memory_access_init(&env->css_mem_env);
 
 	select = gpio_reg_load(GPIO0_ID, _gpio_block_reg_do_select)
 						& (~GPIO_FLASH_PIN_MASK);
@@ -1989,7 +1985,7 @@ enum ia_css_err ia_css_suspend(void)
 	for(i=0;i<MAX_ACTIVE_STREAMS;i++)
 		ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "==*> after 1: seed %d (%p)\n", i, my_css_save.stream_seeds[i].stream);
 	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "ia_css_suspend() leave\n");
-	return(IA_CSS_SUCCESS);
+	return IA_CSS_SUCCESS;
 }
 
 enum ia_css_err
@@ -2001,10 +1997,10 @@ ia_css_resume(void)
 
 	err = ia_css_init(&(my_css_save.driver_env), my_css_save.loaded_fw, my_css_save.mmu_base, my_css_save.irq_type);
 	if (err != IA_CSS_SUCCESS)
-		return(err);
+		return err;
 	err = ia_css_start_sp();
 	if (err != IA_CSS_SUCCESS)
-		return(err);
+		return err;
 	my_css_save.mode = sh_css_mode_resume;
 	for(i=0;i<MAX_ACTIVE_STREAMS;i++)
 	{
@@ -2018,7 +2014,7 @@ ia_css_resume(void)
 				if (i)
 					for(j=0;j<i;j++)
 						ia_css_stream_unload(my_css_save.stream_seeds[j].stream);
-				return(err);
+				return err;
 			}
 			err = ia_css_stream_start(my_css_save.stream_seeds[i].stream);
 			if (err != IA_CSS_SUCCESS)
@@ -2028,7 +2024,7 @@ ia_css_resume(void)
 					ia_css_stream_stop(my_css_save.stream_seeds[j].stream);
 					ia_css_stream_unload(my_css_save.stream_seeds[j].stream);
 				}
-				return(err);
+				return err;
 			}
 			*my_css_save.stream_seeds[i].orig_stream = my_css_save.stream_seeds[i].stream;
 			for(j=0;j<my_css_save.stream_seeds[i].num_pipes;j++)
@@ -2037,7 +2033,7 @@ ia_css_resume(void)
 	}
 	my_css_save.mode = sh_css_mode_working;
 	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "ia_css_resume() leave: return_void\n");
-	return(IA_CSS_SUCCESS);
+	return IA_CSS_SUCCESS;
 }
 
 enum ia_css_err
@@ -8678,7 +8674,7 @@ remove_firmware(struct ia_css_fw_info **l, struct ia_css_fw_info *firmware)
 	return; /* removing single and multiple firmware is handled in acc_unload_extension() */
 }
 
-#if !defined(C_RUN) && !defined(HRT_UNSCHED)
+#if !defined(HRT_UNSCHED)
 static enum ia_css_err
 upload_isp_code(struct ia_css_fw_info *firmware)
 {
@@ -8713,7 +8709,7 @@ upload_isp_code(struct ia_css_fw_info *firmware)
 static enum ia_css_err
 acc_load_extension(struct ia_css_fw_info *firmware)
 {
-#if !defined(C_RUN) && !defined(HRT_UNSCHED)
+#if !defined(HRT_UNSCHED)
 	enum ia_css_err err;
 	struct ia_css_fw_info *hd = firmware;
 	while (hd){
@@ -10226,7 +10222,7 @@ ia_css_stream_load(struct ia_css_stream *stream)
 						for(k=0;k<j;k++)
 							ia_css_pipe_destroy(my_css_save.stream_seeds[i].pipes[k]);
 					}
-					return(err);
+					return err;
 				}
 			err = ia_css_stream_create(&(my_css_save.stream_seeds[i].stream_config), my_css_save.stream_seeds[i].num_pipes,
 						    my_css_save.stream_seeds[i].pipes, &(my_css_save.stream_seeds[i].stream));
@@ -10235,12 +10231,12 @@ ia_css_stream_load(struct ia_css_stream *stream)
 				ia_css_stream_destroy(stream);
 				for(j=0;j<my_css_save.stream_seeds[i].num_pipes;j++)
 					ia_css_pipe_destroy(my_css_save.stream_seeds[i].pipes[j]);
-				return(err);
+				return err;
 			}
 			break;
 		}
 	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE,	"ia_css_stream_load() exit, \n");
-	return(IA_CSS_SUCCESS);
+	return IA_CSS_SUCCESS;
 #else
 	/* TODO remove function - DEPRECATED */
 	(void)stream;
@@ -10381,7 +10377,7 @@ ia_css_stream_unload(struct ia_css_stream *stream)
 			break;
 		}
 	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE,	"ia_css_stream_unload() exit, \n");
-	return(IA_CSS_SUCCESS);
+	return IA_CSS_SUCCESS;
 }
 
 #endif

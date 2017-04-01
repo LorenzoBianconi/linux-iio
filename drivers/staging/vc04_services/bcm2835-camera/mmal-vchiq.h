@@ -74,7 +74,7 @@ struct vchiq_mmal_port {
 	struct vchiq_mmal_port_buffer current_buffer;
 
 	/* stream format */
-	struct mmal_es_format format;
+	struct mmal_es_format_local format;
 	/* elementry stream format */
 	union mmal_es_specific_format es;
 
@@ -108,8 +108,8 @@ int vchiq_mmal_init(struct vchiq_mmal_instance **out_instance);
 int vchiq_mmal_finalise(struct vchiq_mmal_instance *instance);
 
 /* Initialise a mmal component and its ports
-*
-*/
+ *
+ */
 int vchiq_mmal_component_init(
 		struct vchiq_mmal_instance *instance,
 		const char *name,
