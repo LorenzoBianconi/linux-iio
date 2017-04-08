@@ -313,8 +313,8 @@ static void tx_device_task(void *dev)
 	int rc = 0;
 
 	DPRINTK(4, "\n");
-	if (cnt_txqbody(priv) > 0
-	    && atomic_read(&priv->psstatus.status) != PS_SNOOZE) {
+	if (cnt_txqbody(priv) > 0 &&
+	    atomic_read(&priv->psstatus.status) != PS_SNOOZE) {
 		sp = &priv->tx_dev.tx_dev_buff[priv->tx_dev.qhead];
 		if (priv->dev_state >= DEVICE_STATE_BOOT) {
 			rc = write_to_device(priv, sp->sendp, sp->size);
@@ -558,8 +558,8 @@ static void ks_sdio_interrupt(struct sdio_func *func)
 		/* read (General Communication B register) */
 		/* bit5 -> Write Status Idle */
 		/* bit2 -> Read Status Busy  */
-		if (status & INT_GCR_B
-		    || atomic_read(&priv->psstatus.status) == PS_SNOOZE) {
+		if (status & INT_GCR_B ||
+		    atomic_read(&priv->psstatus.status) == PS_SNOOZE) {
 			retval =
 			    ks7010_sdio_read(priv, GCR_B, &rw_data,
 					     sizeof(rw_data));
@@ -591,7 +591,7 @@ static void ks_sdio_interrupt(struct sdio_func *func)
 			}
 			DPRINTK(4, "WSTATUS_RSIZE=%02X\n", rw_data);
 			rsize = rw_data & RSIZE_MASK;
-			if (rsize) {	/* Read schedule */
+			if (rsize != 0) {	/* Read schedule */
 				ks_wlan_hw_rx((void *)priv,
 					      (uint16_t)(rsize << 4));
 			}
@@ -695,8 +695,8 @@ static int ks7010_sdio_data_compare(struct ks_wlan_private *priv, u32 address,
 	if (ret)
 		goto err_free_read_buf;
 
-	ret = memcmp(data, read_buf, size);
-	if (ret) {
+	if (memcmp(data, read_buf, size) != 0) {
+		ret = -EIO;
 		DPRINTK(0, "data compare error (%d)\n", ret);
 		goto err_free_read_buf;
 	}
@@ -829,7 +829,7 @@ static void ks7010_card_init(struct ks_wlan_private *priv)
 		DPRINTK(1, "wait time out!! SME_START\n");
 	}
 
-	if (priv->mac_address_valid && priv->version_size)
+	if (priv->mac_address_valid && priv->version_size != 0)
 		priv->dev_state = DEVICE_STATE_PREINIT;
 
 	hostif_sme_enqueue(priv, SME_GET_EEPROM_CKSUM);

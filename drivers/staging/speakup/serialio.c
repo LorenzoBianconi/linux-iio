@@ -125,7 +125,7 @@ static void start_serial_interrupt(int irq)
 		pr_err("Unable to request Speakup serial I R Q\n");
 	/* Set MCR */
 	outb(UART_MCR_DTR | UART_MCR_RTS | UART_MCR_OUT2,
-			speakup_info.port_tts + UART_MCR);
+	     speakup_info.port_tts + UART_MCR);
 	/* Turn on Interrupts */
 	outb(UART_IER_MSI|UART_IER_RLSI|UART_IER_RDI,
 			speakup_info.port_tts + UART_IER);
@@ -243,7 +243,7 @@ unsigned char spk_serial_in_nowait(void)
 }
 EXPORT_SYMBOL_GPL(spk_serial_in_nowait);
 
-int spk_serial_out(struct spk_synth *in_synth, const char ch)
+static int spk_serial_out(struct spk_synth *in_synth, const char ch)
 {
 	if (in_synth->alive && spk_wait_for_xmitr(in_synth)) {
 		outb_p(ch, speakup_info.port_tts);

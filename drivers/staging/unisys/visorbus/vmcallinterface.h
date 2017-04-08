@@ -16,26 +16,10 @@
 #define __VMCALLINTERFACE_H__
 
 /*
- * This file contains all structures needed to support the VMCALLs for IO
- * Virtualization.  The VMCALLs are provided by Monitor and used by IO code
- * running on IO Partitions.
+ * This file contains all structures needed to support the VMCALLs for s-Par
+ * Virtualization.  The VMCALLs are provided by Monitor and used by s-Par
+ * drivers running in a Linux guest partition.
  */
-static inline unsigned long
-__unisys_vmcall_gnuc(unsigned long tuple, unsigned long reg_ebx,
-		     unsigned long reg_ecx)
-{
-	unsigned long result = 0;
-	unsigned int cpuid_eax, cpuid_ebx, cpuid_ecx, cpuid_edx;
-
-	cpuid(0x00000001, &cpuid_eax, &cpuid_ebx, &cpuid_ecx, &cpuid_edx);
-	if (!(cpuid_ecx & 0x80000000))
-		return -EPERM;
-
-	__asm__ __volatile__(".byte 0x00f, 0x001, 0x0c1" : "=a"(result) :
-		"a"(tuple), "b"(reg_ebx), "c"(reg_ecx));
-	return result;
-}
-
 static inline unsigned long
 __unisys_extended_vmcall_gnuc(unsigned long long tuple,
 			      unsigned long long reg_ebx,
@@ -53,10 +37,6 @@ __unisys_extended_vmcall_gnuc(unsigned long long tuple,
 		"a"(tuple), "b"(reg_ebx), "c"(reg_ecx), "d"(reg_edx));
 	return result;
 }
-
-#ifdef VMCALL_CONTROLVM_ADDR
-#undef VMCALL_CONTROLVM_ADDR
-#endif	/*  */
 
 /* define subsystem number for AppOS, used in uislib driver  */
 #define MDS_APPOS 0x4000000000000000L /* subsystem = 62 - AppOS */
@@ -82,16 +62,17 @@ enum vmcall_monitor_interface_method_tuple { /* VMCALL identification tuples  */
 	VMCALL_UPDATE_PHYSICAL_TIME = 0x0a02
 };
 
-#define VMCALL_SUCCESS 0
-#define VMCALL_SUCCESSFUL(result) (result == 0)
+enum vmcall_result {
+	VMCALL_RESULT_SUCCESS = 0,
+	VMCALL_RESULT_INVALID_PARAM = 1,
+	VMCALL_RESULT_DATA_UNAVAILABLE = 2,
+	VMCALL_RESULT_FAILURE_UNAVAILABLE = 3,
+	VMCALL_RESULT_DEVICE_ERROR = 4,
+	VMCALL_RESULT_DEVICE_NOT_READY = 5
+};
 
-#define unisys_vmcall(tuple, reg_ebx, reg_ecx) \
-	__unisys_vmcall_gnuc(tuple, reg_ebx, reg_ecx)
 #define unisys_extended_vmcall(tuple, reg_ebx, reg_ecx, reg_edx) \
 	__unisys_extended_vmcall_gnuc(tuple, reg_ebx, reg_ecx, reg_edx)
-#define ISSUE_IO_VMCALL(method, param, result) \
-	(result = unisys_vmcall(method, (param) & 0xFFFFFFFF, \
-				(param) >> 32))
 
 /* Structures for IO VMCALLs */
 

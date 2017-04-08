@@ -335,7 +335,7 @@ static int ks_wlan_get_essid(struct net_device *dev,
 	/* Note : if dwrq->flags != 0, we should
 	 * get the relevant SSID from the SSID list...
 	 */
-	if (priv->reg.ssid.size) {
+	if (priv->reg.ssid.size != 0) {
 		/* Get the current SSID */
 		memcpy(extra, priv->reg.ssid.body, priv->reg.ssid.size);
 
@@ -928,7 +928,7 @@ static int ks_wlan_set_encode(struct net_device *dev,
 			/* Do we want to just set the transmit key index ? */
 			if ((index >= 0) && (index < 4)) {
 				/* set_wep_key(priv, index, 0, 0, 1);   xxx */
-				if (priv->reg.wep_key[index].size) {
+				if (priv->reg.wep_key[index].size != 0) {
 					priv->reg.wep_index = index;
 					priv->need_commit |= SME_WEP_INDEX;
 				} else {
@@ -1531,7 +1531,7 @@ static int ks_wlan_get_scan(struct net_device *dev,
 		return -EAGAIN;
 	}
 
-	if (!priv->aplist.size) {
+	if (priv->aplist.size == 0) {
 		/* Client error, no scan results...
 		 * The caller need to restart the scan.
 		 */
@@ -1924,9 +1924,8 @@ static int ks_wlan_set_pmksa(struct net_device *dev,
 		if (list_empty(&priv->pmklist.head)) {	/* new list */
 			for (i = 0; i < PMK_LIST_MAX; i++) {
 				pmk = &priv->pmklist.pmk[i];
-				if (!memcmp
-				    ("\x00\x00\x00\x00\x00\x00", pmk->bssid,
-				     ETH_ALEN))
+				if (memcmp("\x00\x00\x00\x00\x00\x00",
+					   pmk->bssid, ETH_ALEN) == 0)
 					break; /* loop */
 			}
 			memcpy(pmk->bssid, pmksa->bssid.sa_data, ETH_ALEN);
@@ -1938,7 +1937,7 @@ static int ks_wlan_set_pmksa(struct net_device *dev,
 		/* search cache data */
 		list_for_each(ptr, &priv->pmklist.head) {
 			pmk = list_entry(ptr, struct pmk_t, list);
-			if (!memcmp(pmksa->bssid.sa_data, pmk->bssid, ETH_ALEN)) {	/* match address! list move to head. */
+			if (memcmp(pmksa->bssid.sa_data, pmk->bssid, ETH_ALEN) == 0) {
 				memcpy(pmk->pmkid, pmksa->pmkid, IW_PMKID_LEN);
 				list_move(&pmk->list, &priv->pmklist.head);
 				break; /* list_for_each */
@@ -1950,8 +1949,8 @@ static int ks_wlan_set_pmksa(struct net_device *dev,
 		if (priv->pmklist.size < PMK_LIST_MAX) {	/* new cache data */
 			for (i = 0; i < PMK_LIST_MAX; i++) {
 				pmk = &priv->pmklist.pmk[i];
-				if (!memcmp("\x00\x00\x00\x00\x00\x00",
-					    pmk->bssid, ETH_ALEN))
+				if (memcmp("\x00\x00\x00\x00\x00\x00",
+					    pmk->bssid, ETH_ALEN) == 0)
 					break; /* loop */
 			}
 			memcpy(pmk->bssid, pmksa->bssid.sa_data, ETH_ALEN);
@@ -1973,7 +1972,7 @@ static int ks_wlan_set_pmksa(struct net_device *dev,
 		/* search cache data */
 		list_for_each(ptr, &priv->pmklist.head) {
 			pmk = list_entry(ptr, struct pmk_t, list);
-			if (!memcmp(pmksa->bssid.sa_data, pmk->bssid, ETH_ALEN)) {	/* match address! list del. */
+			if (memcmp(pmksa->bssid.sa_data, pmk->bssid, ETH_ALEN) == 0) {
 				eth_zero_addr(pmk->bssid);
 				memset(pmk->pmkid, 0, IW_PMKID_LEN);
 				list_del_init(&pmk->list);

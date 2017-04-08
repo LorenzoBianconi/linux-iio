@@ -129,7 +129,7 @@ int get_current_ap(struct ks_wlan_private *priv, struct link_ap_info_t *ap_info)
 	memcpy(ap->rate_set.body, ap_info->rate_set.body,
 	       ap_info->rate_set.size);
 	ap->rate_set.size = ap_info->rate_set.size;
-	if (ap_info->ext_rate_set.size) {
+	if (ap_info->ext_rate_set.size != 0) {
 		/* rate_set */
 		memcpy(&ap->rate_set.body[ap->rate_set.size],
 		       ap_info->ext_rate_set.body,
@@ -271,7 +271,7 @@ int get_ap_information(struct ks_wlan_private *priv, struct ap_info_t *ap_info,
 			memcpy(ap->rsn_ie.body, bp + 2, ap->rsn_ie.size);
 			break;
 		case 221:	/* WPA */
-			if (!memcmp(bp + 2, "\x00\x50\xf2\x01", 4)) {	/* WPA OUI check */
+			if (memcmp(bp + 2, "\x00\x50\xf2\x01", 4) == 0) {	/* WPA OUI check */
 				ap->wpa_ie.id = *bp;
 				if (*(bp + 1) <= RSN_IE_BODY_MAX) {
 					ap->wpa_ie.size = *(bp + 1);
@@ -325,7 +325,7 @@ int hostif_data_indication_wpa(struct ks_wlan_private *priv,
 	eth_proto = ntohs(eth_hdr->h_proto);
 
 	/* source address check */
-	if (!memcmp(&eth_hdr->h_source[0], &priv->eth_addr[0], ETH_ALEN))
+	if (memcmp(&eth_hdr->h_source[0], &priv->eth_addr[0], ETH_ALEN) == 0)
 		return 0;
 
 	if (eth_hdr->h_dest_snap != eth_hdr->h_source_snap) {
@@ -353,7 +353,7 @@ int hostif_data_indication_wpa(struct ks_wlan_private *priv,
 					   (uint8_t)0,	/* priority */
 					   (uint8_t *)michael_mic.Result);
 		}
-		if (memcmp(michael_mic.Result, RecvMIC, 8)) {
+		if (memcmp(michael_mic.Result, RecvMIC, 8) != 0) {
 			now = jiffies;
 			mic_failure = &priv->wpa.mic_failure;
 			/* MIC FAILURE */
@@ -421,7 +421,7 @@ void hostif_data_indication(struct ks_wlan_private *priv)
 	DPRINTK(3, "ether protocol = %04X\n", eth_proto);
 
 	/* source address check */
-	if (!memcmp(&priv->eth_addr[0], eth_hdr->h_source, ETH_ALEN)) {
+	if (memcmp(&priv->eth_addr[0], eth_hdr->h_source, ETH_ALEN) == 0) {
 		DPRINTK(1, "invalid : source is own mac address !!\n");
 		DPRINTK(1,
 			"eth_hdrernet->h_dest=%02X:%02X:%02X:%02X:%02X:%02X\n",
@@ -836,9 +836,8 @@ void hostif_scan_indication(struct ks_wlan_private *priv)
 
 	if (priv->scan_ind_count) {
 		for (i = 0; i < priv->aplist.size; i++) {	/* bssid check */
-			if (!memcmp
-			    (ap_info->bssid,
-			     priv->aplist.ap[i].bssid, ETH_ALEN)) {
+			if (memcmp(ap_info->bssid,
+				   priv->aplist.ap[i].bssid, ETH_ALEN) == 0) {
 				if (ap_info->frame_type ==
 				    FRAME_TYPE_PROBE_RESP)
 					get_ap_information(priv, ap_info,
@@ -1168,7 +1167,7 @@ int hostif_data_request(struct ks_wlan_private *priv, struct sk_buff *packet)
 
 	/* packet check */
 	eth = (struct ethhdr *)packet->data;
-	if (memcmp(&priv->eth_addr[0], eth->h_source, ETH_ALEN)) {
+	if (memcmp(&priv->eth_addr[0], eth->h_source, ETH_ALEN) != 0) {
 		DPRINTK(1, "invalid mac address !!\n");
 		DPRINTK(1, "ethernet->h_source=%pM\n", eth->h_source);
 		ret = -ENXIO;
@@ -2456,16 +2455,18 @@ void hostif_sme_execute(struct ks_wlan_private *priv, int event)
 		hostif_phy_information_request(priv);
 		break;
 	case SME_MIC_FAILURE_REQUEST:
-		if (priv->wpa.mic_failure.failure == 1)
-			hostif_mic_failure_request(
-				priv, priv->wpa.mic_failure.failure - 1, 0);
-		else if (priv->wpa.mic_failure.failure == 2)
-			hostif_mic_failure_request(
-				priv, priv->wpa.mic_failure.failure - 1,
-				priv->wpa.mic_failure.counter);
-		else
+		if (priv->wpa.mic_failure.failure == 1) {
+			hostif_mic_failure_request(priv,
+						   priv->wpa.mic_failure.failure - 1,
+						   0);
+		} else if (priv->wpa.mic_failure.failure == 2) {
+			hostif_mic_failure_request(priv,
+						   priv->wpa.mic_failure.failure - 1,
+						   priv->wpa.mic_failure.counter);
+		} else {
 			DPRINTK(4, "SME_MIC_FAILURE_REQUEST: failure count=%u error?\n",
 				priv->wpa.mic_failure.failure);
+		}
 		break;
 	case SME_MIC_FAILURE_CONFIRM:
 		if (priv->wpa.mic_failure.failure == 2) {
@@ -2606,17 +2607,16 @@ void hostif_sme_task(unsigned long dev)
 
 	DPRINTK(3, "\n");
 
-	if (priv->dev_state >= DEVICE_STATE_BOOT) {
-		if (cnt_smeqbody(priv) > 0
-		    && priv->dev_state >= DEVICE_STATE_BOOT) {
-			hostif_sme_execute(priv,
-					   priv->sme_i.event_buff[priv->sme_i.
-								  qhead]);
-			inc_smeqhead(priv);
-			if (cnt_smeqbody(priv) > 0)
-				tasklet_schedule(&priv->sme_task);
-		}
-	}
+	if (priv->dev_state < DEVICE_STATE_BOOT)
+		return;
+
+	if (cnt_smeqbody(priv) <= 0)
+		return;
+
+	hostif_sme_execute(priv, priv->sme_i.event_buff[priv->sme_i.qhead]);
+	inc_smeqhead(priv);
+	if (cnt_smeqbody(priv) > 0)
+		tasklet_schedule(&priv->sme_task);
 }
 
 /* send to Station Management Entity module */
