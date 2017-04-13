@@ -115,7 +115,7 @@ struct ks_sdio_card {
 struct tx_device_buffer {
 	unsigned char *sendp;	/* pointer of send req data */
 	unsigned int size;
-	void (*complete_handler) (void *arg1, void *arg2);
+	void (*complete_handler)(void *arg1, void *arg2);
 	void *arg1;
 	void *arg2;
 };
@@ -142,6 +142,7 @@ struct rx_device {
 	unsigned int qtail;	/* rx buffer queue last pointer */
 	spinlock_t rx_dev_lock;
 };
+
 #define	ROM_FILE "ks7010sd.rom"
 
 #endif /* _KS7010_SDIO_H */

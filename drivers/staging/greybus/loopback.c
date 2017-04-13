@@ -365,11 +365,8 @@ static void gb_loopback_calculate_stats(struct gb_loopback *gb, bool error);
 
 static u32 gb_loopback_nsec_to_usec_latency(u64 elapsed_nsecs)
 {
-	u32 lat;
-
 	do_div(elapsed_nsecs, NSEC_PER_USEC);
-	lat = elapsed_nsecs;
-	return lat;
+	return elapsed_nsecs;
 }
 
 static u64 __gb_loopback_calc_latency(u64 t1, u64 t2)
@@ -629,6 +626,7 @@ static int gb_loopback_async_operation(struct gb_loopback *gb, int type,
 	mutex_lock(&gb->mutex);
 	ret = gb_operation_request_send(operation,
 					gb_loopback_async_operation_callback,
+					0,
 					GFP_KERNEL);
 	if (ret)
 		goto error;
@@ -1214,7 +1212,7 @@ static int gb_loopback_probe(struct gb_bundle *bundle,
 	/* Create per-connection sysfs and debugfs data-points */
 	snprintf(name, sizeof(name), "raw_latency_%s",
 		 dev_name(&connection->bundle->dev));
-	gb->file = debugfs_create_file(name, S_IFREG | S_IRUGO, gb_dev.root, gb,
+	gb->file = debugfs_create_file(name, S_IFREG | 0444, gb_dev.root, gb,
 				       &gb_loopback_debugfs_latency_ops);
 
 	gb->id = ida_simple_get(&loopback_ida, 0, 0, GFP_KERNEL);
