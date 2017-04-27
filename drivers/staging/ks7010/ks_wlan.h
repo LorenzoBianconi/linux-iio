@@ -413,7 +413,11 @@ struct wps_status_t {
 #endif /* WPS */
 
 struct ks_wlan_private {
-	struct hw_info_t ks_wlan_hw;	/* hardware information */
+	/* hardware information */
+	struct ks_sdio_card *ks_sdio_card;
+	struct workqueue_struct *wq;
+	struct delayed_work rw_dwork;
+	struct tasklet_struct rx_bh_task;
 
 	struct net_device *net_dev;
 	int reg_net;	/* register_netdev */
@@ -429,7 +433,7 @@ struct ks_wlan_private {
 	u8 *rxp;
 	unsigned int rx_size;
 	struct tasklet_struct sme_task;
-	struct work_struct ks_wlan_wakeup_task;
+	struct work_struct wakeup_work;
 	int scan_ind_count;
 
 	unsigned char eth_addr[ETH_ALEN];
