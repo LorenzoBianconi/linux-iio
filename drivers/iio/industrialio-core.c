@@ -610,10 +610,9 @@ static ssize_t __iio_format_value(char *buf, size_t len, unsigned int type,
 		tmp0 = (int)div_s64_rem(tmp, 1000000000, &tmp1);
 		return snprintf(buf, len, "%d.%09u", tmp0, abs(tmp1));
 	case IIO_VAL_FRACTIONAL_LOG2:
-		tmp = (s64)vals[0] * 1000000000LL >> vals[1];
-		tmp1 = do_div(tmp, 1000000000LL);
-		tmp0 = tmp;
-		return snprintf(buf, len, "%d.%09u", tmp0, tmp1);
+		tmp = shift_right((s64)vals[0] * 1000000000LL, vals[1]);
+		tmp0 = (int)div_s64_rem(tmp, 1000000000LL, &tmp1);
+		return snprintf(buf, len, "%d.%09u", tmp0, abs(tmp1));
 	case IIO_VAL_INT_MULTIPLE:
 	{
 		int i;
@@ -1090,7 +1089,7 @@ static int iio_device_add_info_mask_type(struct iio_dev *indio_dev,
 {
 	int i, ret, attrcount = 0;
 
-	for_each_set_bit(i, infomask, sizeof(infomask)*8) {
+	for_each_set_bit(i, infomask, sizeof(*infomask)*8) {
 		if (i >= ARRAY_SIZE(iio_chan_info_postfix))
 			return -EINVAL;
 		ret = __iio_add_chan_devattr(iio_chan_info_postfix[i],
@@ -1119,7 +1118,7 @@ static int iio_device_add_info_mask_type_avail(struct iio_dev *indio_dev,
 	int i, ret, attrcount = 0;
 	char *avail_postfix;
 
-	for_each_set_bit(i, infomask, sizeof(infomask) * 8) {
+	for_each_set_bit(i, infomask, sizeof(*infomask) * 8) {
 		avail_postfix = kasprintf(GFP_KERNEL,
 					  "%s_available",
 					  iio_chan_info_postfix[i]);

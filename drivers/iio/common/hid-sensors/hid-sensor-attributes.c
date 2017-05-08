@@ -69,6 +69,12 @@ static struct {
 	{HID_USAGE_SENSOR_TIME_TIMESTAMP, HID_USAGE_SENSOR_UNITS_MILLISECOND,
 		1000000, 0},
 
+	{HID_USAGE_SENSOR_DEVICE_ORIENTATION, 0, 1, 0},
+
+	{HID_USAGE_SENSOR_RELATIVE_ORIENTATION, 0, 1, 0},
+
+	{HID_USAGE_SENSOR_GEOMAGNETIC_ORIENTATION, 0, 1, 0},
+
 	{HID_USAGE_SENSOR_TEMPERATURE, 0, 1000, 0},
 	{HID_USAGE_SENSOR_TEMPERATURE, HID_USAGE_SENSOR_UNITS_DEGREES, 1000, 0},
 
@@ -230,9 +236,17 @@ int hid_sensor_write_samp_freq_value(struct hid_sensor_common *st,
 	ret = sensor_hub_set_feature(st->hsdev, st->poll.report_id,
 				     st->poll.index, sizeof(value), &value);
 	if (ret < 0 || value < 0)
-		ret = -EINVAL;
+		return -EINVAL;
 
-	return ret;
+	ret = sensor_hub_get_feature(st->hsdev,
+				     st->poll.report_id,
+				     st->poll.index, sizeof(value), &value);
+	if (ret < 0 || value < 0)
+		return -EINVAL;
+
+	st->poll_interval = value;
+
+	return 0;
 }
 EXPORT_SYMBOL(hid_sensor_write_samp_freq_value);
 
@@ -275,9 +289,18 @@ int hid_sensor_write_raw_hyst_value(struct hid_sensor_common *st,
 				     st->sensitivity.index, sizeof(value),
 				     &value);
 	if (ret < 0 || value < 0)
-		ret = -EINVAL;
+		return -EINVAL;
 
-	return ret;
+	ret = sensor_hub_get_feature(st->hsdev,
+				     st->sensitivity.report_id,
+				     st->sensitivity.index, sizeof(value),
+				     &value);
+	if (ret < 0 || value < 0)
+		return -EINVAL;
+
+	st->raw_hystersis = value;
+
+	return 0;
 }
 EXPORT_SYMBOL(hid_sensor_write_raw_hyst_value);
 
@@ -380,6 +403,9 @@ int hid_sensor_get_reporting_interval(struct hid_sensor_hub_device *hsdev,
 	/* Default unit of measure is milliseconds */
 	if (st->poll.units == 0)
 		st->poll.units = HID_USAGE_SENSOR_UNITS_MILLISECOND;
+
+	st->poll_interval = -1;
+
 	return 0;
 
 }
@@ -390,6 +416,8 @@ int hid_sensor_parse_common_attributes(struct hid_sensor_hub_device *hsdev,
 {
 
 	struct hid_sensor_hub_attribute_info timestamp;
+	s32 value;
+	int ret;
 
 	hid_sensor_get_reporting_interval(hsdev, usage_id, st);
 
@@ -407,6 +435,8 @@ int hid_sensor_parse_common_attributes(struct hid_sensor_hub_device *hsdev,
 			HID_FEATURE_REPORT, usage_id,
 			HID_USAGE_SENSOR_PROP_SENSITIVITY_ABS,
 			 &st->sensitivity);
+
+	st->raw_hystersis = -1;
 
 	sensor_hub_input_get_attribute_info(hsdev,
 					    HID_INPUT_REPORT, usage_id,
@@ -427,6 +457,14 @@ int hid_sensor_parse_common_attributes(struct hid_sensor_hub_device *hsdev,
 		st->power_state.index, st->power_state.report_id,
 		st->sensitivity.index, st->sensitivity.report_id,
 		timestamp.index, timestamp.report_id);
+
+	ret = sensor_hub_get_feature(hsdev,
+				st->power_state.report_id,
+				st->power_state.index, sizeof(value), &value);
+	if (ret < 0)
+		return ret;
+	if (value < 0)
+		return -EINVAL;
 
 	return 0;
 }

@@ -202,6 +202,7 @@ static int ks_wlan_set_freq(struct net_device *dev,
 {
 	struct ks_wlan_private *priv =
 	    (struct ks_wlan_private *)netdev_priv(dev);
+	int channel;
 
 	if (priv->sleep_mode == SLP_SLEEP)
 		return -EPERM;
@@ -220,24 +221,22 @@ static int ks_wlan_set_freq(struct net_device *dev,
 		fwrq->m = c + 1;
 	}
 	/* Setting by channel number */
-	if ((fwrq->m > 1000) || (fwrq->e > 0)) {
+	if ((fwrq->m > 1000) || (fwrq->e > 0))
 		return -EOPNOTSUPP;
-	} else {
-		int channel = fwrq->m;
-		/* We should do a better check than that,
-		 * based on the card capability !!!
-		 */
-		if ((channel < 1) || (channel > 14)) {
-			netdev_dbg(dev,
-				   "%s: New channel value of %d is invalid!\n",
-				   dev->name, fwrq->m);
-			return -EINVAL;
-		} else {
-			/* Yes ! We can set it !!! */
-			priv->reg.channel = (u8)(channel);
-			priv->need_commit |= SME_MODE_SET;
-		}
+
+	channel = fwrq->m;
+	/* We should do a better check than that,
+	 * based on the card capability !!!
+	 */
+	if ((channel < 1) || (channel > 14)) {
+		netdev_dbg(dev, "%s: New channel value of %d is invalid!\n",
+			   dev->name, fwrq->m);
+		return -EINVAL;
 	}
+
+	/* Yes ! We can set it !!! */
+	priv->reg.channel = (u8)(channel);
+	priv->need_commit |= SME_MODE_SET;
 
 	return -EINPROGRESS;	/* Call commit handler */
 }
@@ -1199,27 +1198,17 @@ static int ks_wlan_set_power(struct net_device *dev,
 {
 	struct ks_wlan_private *priv =
 	    (struct ks_wlan_private *)netdev_priv(dev);
-	short enabled;
 
 	if (priv->sleep_mode == SLP_SLEEP)
 		return -EPERM;
 
-	/* for SLEEP MODE */
-	enabled = vwrq->disabled ? 0 : 1;
-	if (enabled == 0) {	/* 0 */
+	if (vwrq->disabled) {
 		priv->reg.powermgt = POWMGT_ACTIVE_MODE;
-	} else if (enabled) {	/* 1 */
+	} else {
 		if (priv->reg.operation_mode == MODE_INFRASTRUCTURE)
 			priv->reg.powermgt = POWMGT_SAVE1_MODE;
 		else
 			return -EINVAL;
-	} else if (enabled) {	/* 2 */
-		if (priv->reg.operation_mode == MODE_INFRASTRUCTURE)
-			priv->reg.powermgt = POWMGT_SAVE2_MODE;
-		else
-			return -EINVAL;
-	} else {
-		return -EINVAL;
 	}
 
 	hostif_sme_enqueue(priv, SME_POW_MNGMT_REQUEST);
@@ -1779,8 +1768,11 @@ static int ks_wlan_set_encode_ext(struct net_device *dev,
 	struct iw_encode_ext *enc;
 	int index = dwrq->flags & IW_ENCODE_INDEX;
 	unsigned int commit = 0;
+	struct wpa_key_t *key;
 
 	enc = (struct iw_encode_ext *)extra;
+	if (!enc)
+		return -EINVAL;
 
 	DPRINTK(2, "flags=%04X:: ext_flags=%08X\n", dwrq->flags,
 		enc->ext_flags);
@@ -1792,24 +1784,20 @@ static int ks_wlan_set_encode_ext(struct net_device *dev,
 	if (index < 1 || index > 4)
 		return -EINVAL;
 	index--;
+	key = &priv->wpa.key[index];
 
 	if (dwrq->flags & IW_ENCODE_DISABLED)
-		priv->wpa.key[index].key_len = 0;
+		key->key_len = 0;
 
-	if (!enc)
-		return -EINVAL;
-
-	priv->wpa.key[index].ext_flags = enc->ext_flags;
+	key->ext_flags = enc->ext_flags;
 	if (enc->ext_flags & IW_ENCODE_EXT_SET_TX_KEY) {
 		priv->wpa.txkey = index;
 		commit |= SME_WEP_INDEX;
 	} else if (enc->ext_flags & IW_ENCODE_EXT_RX_SEQ_VALID) {
-		memcpy(&priv->wpa.key[index].rx_seq[0],
-		       enc->rx_seq, IW_ENCODE_SEQ_MAX_SIZE);
+		memcpy(&key->rx_seq[0], &enc->rx_seq[0], IW_ENCODE_SEQ_MAX_SIZE);
 	}
 
-	memcpy(&priv->wpa.key[index].addr.sa_data[0],
-	       &enc->addr.sa_data[0], ETH_ALEN);
+	memcpy(&key->addr.sa_data[0], &enc->addr.sa_data[0], ETH_ALEN);
 
 	switch (enc->alg) {
 	case IW_ENCODE_ALG_NONE:
@@ -1817,7 +1805,7 @@ static int ks_wlan_set_encode_ext(struct net_device *dev,
 			priv->reg.privacy_invoked = 0x00;
 			commit |= SME_WEP_FLAG;
 		}
-		priv->wpa.key[index].key_len = 0;
+		key->key_len = 0;
 
 		break;
 	case IW_ENCODE_ALG_WEP:
@@ -1827,9 +1815,8 @@ static int ks_wlan_set_encode_ext(struct net_device *dev,
 			commit |= SME_WEP_FLAG;
 		}
 		if (enc->key_len) {
-			memcpy(&priv->wpa.key[index].key_val[0],
-			       &enc->key[0], enc->key_len);
-			priv->wpa.key[index].key_len = enc->key_len;
+			memcpy(&key->key_val[0], &enc->key[0], enc->key_len);
+			key->key_len = enc->key_len;
 			commit |= (SME_WEP_VAL1 << index);
 		}
 		break;
@@ -1839,20 +1826,14 @@ static int ks_wlan_set_encode_ext(struct net_device *dev,
 			commit |= SME_WEP_FLAG;
 		}
 		if (enc->key_len == 32) {
-			memcpy(&priv->wpa.key[index].key_val[0],
-			       &enc->key[0], enc->key_len - 16);
-			priv->wpa.key[index].key_len =
-				enc->key_len - 16;
+			memcpy(&key->key_val[0], &enc->key[0], enc->key_len - 16);
+			key->key_len = enc->key_len - 16;
 			if (priv->wpa.key_mgmt_suite == 4) {	/* WPA_NONE */
-				memcpy(&priv->wpa.key[index].
-				       tx_mic_key[0], &enc->key[16], 8);
-				memcpy(&priv->wpa.key[index].
-				       rx_mic_key[0], &enc->key[16], 8);
+				memcpy(&key->tx_mic_key[0], &enc->key[16], 8);
+				memcpy(&key->rx_mic_key[0], &enc->key[16], 8);
 			} else {
-				memcpy(&priv->wpa.key[index].
-				       tx_mic_key[0], &enc->key[16], 8);
-				memcpy(&priv->wpa.key[index].
-				       rx_mic_key[0], &enc->key[24], 8);
+				memcpy(&key->tx_mic_key[0], &enc->key[16], 8);
+				memcpy(&key->rx_mic_key[0], &enc->key[24], 8);
 			}
 			commit |= (SME_WEP_VAL1 << index);
 		}
@@ -1860,7 +1841,7 @@ static int ks_wlan_set_encode_ext(struct net_device *dev,
 	default:
 		return -EINVAL;
 	}
-	priv->wpa.key[index].alg = enc->alg;
+	key->alg = enc->alg;
 
 	if (commit) {
 		if (commit & SME_WEP_INDEX)
@@ -1950,7 +1931,7 @@ static int ks_wlan_set_pmksa(struct net_device *dev,
 			for (i = 0; i < PMK_LIST_MAX; i++) {
 				pmk = &priv->pmklist.pmk[i];
 				if (memcmp("\x00\x00\x00\x00\x00\x00",
-					    pmk->bssid, ETH_ALEN) == 0)
+					   pmk->bssid, ETH_ALEN) == 0)
 					break; /* loop */
 			}
 			memcpy(pmk->bssid, pmksa->bssid.sa_data, ETH_ALEN);
@@ -2902,7 +2883,7 @@ static
 int ks_wlan_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct ks_wlan_private *priv = netdev_priv(dev);
-	int rc = 0;
+	int ret;
 
 	DPRINTK(3, "in_interrupt()=%ld\n", in_interrupt());
 
@@ -2918,21 +2899,17 @@ int ks_wlan_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (netif_running(dev))
 		netif_stop_queue(dev);
 
-	rc = hostif_data_request(priv, skb);
+	ret = hostif_data_request(priv, skb);
 	netif_trans_update(dev);
 
-	DPRINTK(4, "rc=%d\n", rc);
-	if (rc)
-		rc = 0;
+	if (ret)
+		DPRINTK(4, "hostif_data_request error: =%d\n", ret);
 
-	return rc;
+	return 0;
 }
 
-void send_packet_complete(void *arg1, void *arg2)
+void send_packet_complete(struct ks_wlan_private *priv, struct sk_buff *skb)
 {
-	struct ks_wlan_private *priv = (struct ks_wlan_private *)arg1;
-	struct sk_buff *packet = (struct sk_buff *)arg2;
-
 	DPRINTK(3, "\n");
 
 	priv->nstats.tx_packets++;
@@ -2940,10 +2917,9 @@ void send_packet_complete(void *arg1, void *arg2)
 	if (netif_queue_stopped(priv->net_dev))
 		netif_wake_queue(priv->net_dev);
 
-	if (packet) {
-		priv->nstats.tx_bytes += packet->len;
-		dev_kfree_skb(packet);
-		packet = NULL;
+	if (skb) {
+		priv->nstats.tx_bytes += skb->len;
+		dev_kfree_skb(skb);
 	}
 }
 

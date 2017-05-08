@@ -50,7 +50,6 @@
 #define AS3935_TUNE_CAP		0x08
 #define AS3935_CALIBRATE	0x3D
 
-#define AS3935_WRITE_DATA	BIT(15)
 #define AS3935_READ_DATA	BIT(14)
 #define AS3935_ADDRESS(x)	((x) << 8)
 
@@ -105,7 +104,7 @@ static int as3935_write(struct as3935_state *st,
 {
 	u8 *buf = st->buf;
 
-	buf[0] = (AS3935_WRITE_DATA | AS3935_ADDRESS(reg)) >> 8;
+	buf[0] = AS3935_ADDRESS(reg) >> 8;
 	buf[1] = val;
 
 	return spi_write(st->spi, buf, 2);
@@ -177,12 +176,12 @@ static int as3935_read_raw(struct iio_dev *indio_dev,
 		if (ret)
 			return ret;
 
-		if (m == IIO_CHAN_INFO_RAW)
-			return IIO_VAL_INT;
-
 		/* storm out of range */
 		if (*val == AS3935_DATA_MASK)
 			return -EINVAL;
+
+		if (m == IIO_CHAN_INFO_RAW)
+			return IIO_VAL_INT;
 
 		if (m == IIO_CHAN_INFO_PROCESSED)
 			*val *= 1000;
