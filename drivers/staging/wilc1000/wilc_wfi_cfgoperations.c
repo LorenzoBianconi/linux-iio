@@ -1837,7 +1837,7 @@ static int set_power_mgmt(struct wiphy *wiphy, struct net_device *dev,
 }
 
 static int change_virtual_intf(struct wiphy *wiphy, struct net_device *dev,
-			       enum nl80211_iftype type, u32 *flags, struct vif_params *params)
+			       enum nl80211_iftype type, struct vif_params *params)
 {
 	struct wilc_priv *priv;
 	struct wilc_vif *vif;
@@ -2003,14 +2003,7 @@ static int add_station(struct wiphy *wiphy, struct net_device *dev,
 			strStaParams.ht_supported = false;
 		} else {
 			strStaParams.ht_supported = true;
-			strStaParams.ht_capa_info = params->ht_capa->cap_info;
-			strStaParams.ht_ampdu_params = params->ht_capa->ampdu_params_info;
-			memcpy(strStaParams.ht_supp_mcs_set,
-			       &params->ht_capa->mcs,
-			       WILC_SUPP_MCS_SET_SIZE);
-			strStaParams.ht_ext_params = params->ht_capa->extended_ht_cap_info;
-			strStaParams.ht_tx_bf_cap = params->ht_capa->tx_BF_cap_info;
-			strStaParams.ht_ante_sel = params->ht_capa->antenna_selection_info;
+			strStaParams.ht_capa = *params->ht_capa;
 		}
 
 		strStaParams.flags_mask = params->sta_flags_mask;
@@ -2075,14 +2068,7 @@ static int change_station(struct wiphy *wiphy, struct net_device *dev,
 			strStaParams.ht_supported = false;
 		} else {
 			strStaParams.ht_supported = true;
-			strStaParams.ht_capa_info = params->ht_capa->cap_info;
-			strStaParams.ht_ampdu_params = params->ht_capa->ampdu_params_info;
-			memcpy(strStaParams.ht_supp_mcs_set,
-			       &params->ht_capa->mcs,
-			       WILC_SUPP_MCS_SET_SIZE);
-			strStaParams.ht_ext_params = params->ht_capa->extended_ht_cap_info;
-			strStaParams.ht_tx_bf_cap = params->ht_capa->tx_BF_cap_info;
-			strStaParams.ht_ante_sel = params->ht_capa->antenna_selection_info;
+			strStaParams.ht_capa = *params->ht_capa;
 		}
 
 		strStaParams.flags_mask = params->sta_flags_mask;
@@ -2099,7 +2085,6 @@ static struct wireless_dev *add_virtual_intf(struct wiphy *wiphy,
 					     const char *name,
 					     unsigned char name_assign_type,
 					     enum nl80211_iftype type,
-					     u32 *flags,
 					     struct vif_params *params)
 {
 	struct wilc_vif *vif;
