@@ -18,6 +18,19 @@
 #include <linux/iio/common/st_sensors_spi.h>
 #include "st_pressure.h"
 
+#ifdef CONFIG_OF
+static const struct of_device_id st_press_of_match[] = {
+	{
+		.compatible = "st,lps22hb-press",
+		.data = LPS22HB_PRESS_DEV_NAME,
+	},
+	{},
+};
+MODULE_DEVICE_TABLE(of, st_press_of_match);
+#else
+#define st_press_of_match	NULL
+#endif
+
 static int st_press_spi_probe(struct spi_device *spi)
 {
 	struct iio_dev *indio_dev;
@@ -30,6 +43,8 @@ static int st_press_spi_probe(struct spi_device *spi)
 
 	press_data = iio_priv(indio_dev);
 
+	st_sensors_of_name_probe(&spi->dev, st_press_of_match,
+				 spi->modalias, sizeof(spi->modalias));
 	st_sensors_spi_configure(indio_dev, spi, press_data);
 
 	err = st_press_common_probe(indio_dev);
@@ -58,6 +73,7 @@ MODULE_DEVICE_TABLE(spi, st_press_id_table);
 static struct spi_driver st_press_driver = {
 	.driver = {
 		.name = "st-press-spi",
+		.of_match_table = of_match_ptr(st_press_of_match),
 	},
 	.probe = st_press_spi_probe,
 	.remove = st_press_spi_remove,
