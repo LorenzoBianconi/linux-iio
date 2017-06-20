@@ -18,6 +18,19 @@
 #include <linux/iio/common/st_sensors_spi.h>
 #include "st_gyro.h"
 
+#ifdef CONFIG_OF
+static const struct of_device_id st_gyro_of_match[] = {
+	{
+		.compatible = "st,l3gd20h-gyro",
+		.data = L3GD20H_GYRO_DEV_NAME,
+	},
+	{},
+};
+MODULE_DEVICE_TABLE(of, st_gyro_of_match);
+#else
+#define st_gyro_of_match	NULL
+#endif
+
 static int st_gyro_spi_probe(struct spi_device *spi)
 {
 	struct iio_dev *indio_dev;
@@ -30,6 +43,8 @@ static int st_gyro_spi_probe(struct spi_device *spi)
 
 	gdata = iio_priv(indio_dev);
 
+	st_sensors_of_name_probe(&spi->dev, st_gyro_of_match,
+				 spi->modalias, sizeof(spi->modalias));
 	st_sensors_spi_configure(indio_dev, spi, gdata);
 
 	err = st_gyro_common_probe(indio_dev);
@@ -63,6 +78,7 @@ MODULE_DEVICE_TABLE(spi, st_gyro_id_table);
 static struct spi_driver st_gyro_driver = {
 	.driver = {
 		.name = "st-gyro-spi",
+		.of_match_table = of_match_ptr(st_gyro_of_match),
 	},
 	.probe = st_gyro_spi_probe,
 	.remove = st_gyro_spi_remove,
