@@ -384,6 +384,42 @@ static struct st_sensors_platform_data *st_sensors_of_probe(struct device *dev,
 }
 #endif
 
+int st_sensors_init_interface_mode(struct iio_dev *indio_dev,
+				   const struct st_sensor_sim *sim_table,
+				   int sim_len)
+{
+	struct st_sensor_data *sdata = iio_priv(indio_dev);
+	struct device_node *np = sdata->dev->of_node;
+	struct st_sensors_platform_data *pdata;
+	int err = 0;
+
+	pdata = (struct st_sensors_platform_data *)sdata->dev->platform_data;
+	if ((np && of_property_read_bool(np, "spi-3wire")) ||
+	    (pdata && pdata->spi_3wire)) {
+		int i, j;
+
+		for (i = 0; i < sim_len; i++) {
+			for (j = 0; j < ST_SENSORS_MAX_SIM; j++) {
+				if (!strcmp(sim_table[i].sensors[j],
+					    indio_dev->name))
+					break;
+			}
+			if (j < ST_SENSORS_MAX_SIM)
+				break;
+		}
+
+		if (i == sim_len)
+			return -EINVAL;
+
+		err = sdata->tf->write_byte(&sdata->tb, sdata->dev,
+					    sim_table[i].addr,
+					    sim_table[i].val);
+	}
+
+	return err;
+}
+EXPORT_SYMBOL(st_sensors_init_interface_mode);
+
 int st_sensors_init_sensor(struct iio_dev *indio_dev,
 					struct st_sensors_platform_data *pdata)
 {
