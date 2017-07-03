@@ -138,8 +138,8 @@ static void start_serial_interrupt(int irq)
 	outb(UART_MCR_DTR | UART_MCR_RTS | UART_MCR_OUT2,
 	     speakup_info.port_tts + UART_MCR);
 	/* Turn on Interrupts */
-	outb(UART_IER_MSI|UART_IER_RLSI|UART_IER_RDI,
-			speakup_info.port_tts + UART_IER);
+	outb(UART_IER_MSI | UART_IER_RLSI | UART_IER_RDI,
+	     speakup_info.port_tts + UART_IER);
 	inb(speakup_info.port_tts + UART_LSR);
 	inb(speakup_info.port_tts + UART_RX);
 	inb(speakup_info.port_tts + UART_IIR);
@@ -162,6 +162,7 @@ static void spk_serial_send_xchar(char ch)
 static void spk_serial_tiocmset(unsigned int set, unsigned int clear)
 {
 	int old = inb(speakup_info.port_tts + UART_MCR);
+
 	outb((old & ~clear) | set, speakup_info.port_tts + UART_MCR);
 }
 
@@ -227,7 +228,8 @@ int spk_wait_for_xmitr(struct spk_synth *in_synth)
 	}
 	while (spk_serial_tx_busy()) {
 		if (--tmout == 0) {
-			pr_warn("%s: timed out (tx busy)\n", in_synth->long_name);
+			pr_warn("%s: timed out (tx busy)\n",
+				in_synth->long_name);
 			timeouts++;
 			return 0;
 		}
@@ -284,7 +286,8 @@ static int spk_serial_out(struct spk_synth *in_synth, const char ch)
 	return 0;
 }
 
-const char *spk_serial_synth_immediate(struct spk_synth *synth, const char *buff)
+const char *spk_serial_synth_immediate(struct spk_synth *synth,
+				       const char *buff)
 {
 	u_char ch;
 

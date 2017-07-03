@@ -17,7 +17,6 @@
 #include "ssi_driver.h"
 #include "ssi_sram_mgr.h"
 
-
 /**
  * struct ssi_sram_mgr_ctx -Internal RAM context manager
  * @sram_free_offset:   the offset to the non-allocated area
@@ -25,7 +24,6 @@
 struct ssi_sram_mgr_ctx {
 	ssi_sram_addr_t sram_free_offset;
 };
-
 
 /**
  * ssi_sram_mgr_fini() - Cleanup SRAM pool.
@@ -37,7 +35,7 @@ void ssi_sram_mgr_fini(struct ssi_drvdata *drvdata)
 	struct ssi_sram_mgr_ctx *smgr_ctx = drvdata->sram_mgr_handle;
 
 	/* Free "this" context */
-	if (smgr_ctx != NULL) {
+	if (smgr_ctx) {
 		memset(smgr_ctx, 0, sizeof(struct ssi_sram_mgr_ctx));
 		kfree(smgr_ctx);
 	}
@@ -127,10 +125,10 @@ void ssi_sram_mgr_const2sram_desc(
 	unsigned int idx = *seq_len;
 
 	for (i = 0; i < nelement; i++, idx++) {
-		HW_DESC_INIT(&seq[idx]);
-		HW_DESC_SET_DIN_CONST(&seq[idx], src[i], sizeof(u32));
-		HW_DESC_SET_DOUT_SRAM(&seq[idx], dst + (i * sizeof(u32)), sizeof(u32));
-		HW_DESC_SET_FLOW_MODE(&seq[idx], BYPASS);
+		hw_desc_init(&seq[idx]);
+		set_din_const(&seq[idx], src[i], sizeof(u32));
+		set_dout_sram(&seq[idx], dst + (i * sizeof(u32)), sizeof(u32));
+		set_flow_mode(&seq[idx], BYPASS);
 	}
 
 	*seq_len = idx;

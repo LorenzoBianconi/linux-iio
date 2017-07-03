@@ -15,7 +15,7 @@
  */
 
 /* \file buffer_mgr.h
-   Buffer Manager
+ * Buffer Manager
  */
 
 #ifndef __SSI_BUFFER_MGR_H__
@@ -25,7 +25,6 @@
 
 #include "ssi_config.h"
 #include "ssi_driver.h"
-
 
 enum ssi_req_dma_buf_type {
 	SSI_DMA_BUF_NULL = 0,
@@ -84,22 +83,6 @@ void ssi_buffer_mgr_unmap_hash_request(struct device *dev, void *ctx, struct sca
 void ssi_buffer_mgr_copy_scatterlist_portion(u8 *dest, struct scatterlist *sg, u32 to_skip, u32 end, enum ssi_sg_cpy_direct direct);
 
 void ssi_buffer_mgr_zero_sgl(struct scatterlist *sgl, u32 data_len);
-
-
-#ifdef CC_DMA_48BIT_SIM
-dma_addr_t ssi_buff_mgr_update_dma_addr(dma_addr_t orig_addr, u32 data_len);
-dma_addr_t ssi_buff_mgr_restore_dma_addr(dma_addr_t orig_addr);
-
-#define SSI_UPDATE_DMA_ADDR_TO_48BIT(addr,size) addr = \
-					ssi_buff_mgr_update_dma_addr(addr,size)
-#define SSI_RESTORE_DMA_ADDR_TO_48BIT(addr) addr = \
-					ssi_buff_mgr_restore_dma_addr(addr)
-#else
-
-#define SSI_UPDATE_DMA_ADDR_TO_48BIT(addr,size) addr = addr
-#define SSI_RESTORE_DMA_ADDR_TO_48BIT(addr) addr = addr
-
-#endif
 
 #endif /*__BUFFER_MGR_H__*/
 
