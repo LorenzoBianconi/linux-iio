@@ -166,6 +166,10 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 			.mask_ihl = 0x02,
 			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
 		},
+		.sim = {
+			.addr = 0x23,
+			.value = BIT(0),
+		},
 		.multi_read_bit = true,
 		.bootime = 2,
 	},
@@ -233,6 +237,10 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 			.addr_od = 0x22,
 			.mask_od = 0x40,
 			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
+		},
+		.sim = {
+			.addr = 0x23,
+			.value = BIT(0),
 		},
 		.multi_read_bit = true,
 		.bootime = 2,
@@ -316,6 +324,10 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 				.en_mask = 0x08,
 			},
 		},
+		.sim = {
+			.addr = 0x24,
+			.value = BIT(0),
+		},
 		.multi_read_bit = false,
 		.bootime = 2,
 	},
@@ -379,6 +391,10 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 			.mask_int1 = 0x04,
 			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
 		},
+		.sim = {
+			.addr = 0x21,
+			.value = BIT(1),
+		},
 		.multi_read_bit = true,
 		.bootime = 2, /* guess */
 	},
@@ -436,6 +452,10 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 			.addr_od = 0x22,
 			.mask_od = 0x40,
 			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
+		},
+		.sim = {
+			.addr = 0x21,
+			.value = BIT(7),
 		},
 		.multi_read_bit = false,
 		.bootime = 2, /* guess */
@@ -499,6 +519,10 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 			.addr_ihl = 0x22,
 			.mask_ihl = 0x80,
 		},
+		.sim = {
+			.addr = 0x23,
+			.value = BIT(0),
+		},
 		.multi_read_bit = true,
 		.bootime = 2,
 	},
@@ -546,6 +570,10 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 			.addr = 0x21,
 			.mask_int1 = 0x04,
 			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
+		},
+		.sim = {
+			.addr = 0x21,
+			.value = BIT(1),
 		},
 		.multi_read_bit = false,
 		.bootime = 2,
@@ -614,40 +642,12 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 			.mask_ihl = 0x02,
 			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
 		},
+		.sim = {
+			.addr = 0x23,
+			.value = BIT(0),
+		},
 		.multi_read_bit = true,
 		.bootime = 2,
-	},
-};
-
-static const struct st_sensor_sim st_accel_sim_table[] = {
-	{
-		.sensors = {
-			[0] = LSM303AGR_ACCEL_DEV_NAME,
-			[1] = LIS3DH_ACCEL_DEV_NAME,
-			[2] = LIS2DH12_ACCEL_DEV_NAME,
-			[3] = LIS331DLH_ACCEL_DEV_NAME,
-			[4] = LNG2DM_ACCEL_DEV_NAME,
-			[5] = LSM330D_ACCEL_DEV_NAME,
-			[6] = LSM330DL_ACCEL_DEV_NAME,
-			[7] = LSM330DLC_ACCEL_DEV_NAME,
-		},
-		.addr = 0x23,
-		.val = BIT(0),
-	},
-	{
-		.sensors = {
-			[0] = LSM330_ACCEL_DEV_NAME,
-		},
-		.addr = 0x24,
-		.val = BIT(0),
-	},
-	{
-		.sensors = {
-			[0] = LIS3L02DQ_ACCEL_DEV_NAME,
-			[1] = LIS3LV02DL_ACCEL_DEV_NAME,
-		},
-		.addr = 0x21,
-		.val = BIT(1),
 	},
 };
 
@@ -750,11 +750,6 @@ int st_accel_common_probe(struct iio_dev *indio_dev)
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->info = &accel_info;
 	mutex_init(&adata->tb.buf_lock);
-
-	err = st_sensors_init_interface_mode(indio_dev, st_accel_sim_table,
-					     ARRAY_SIZE(st_accel_sim_table));
-	if (err < 0)
-		return err;
 
 	err = st_sensors_power_enable(indio_dev);
 	if (err)
