@@ -84,7 +84,7 @@ static const struct of_device_id st_accel_of_match[] = {
 	},
 	{
 		.compatible = "st,h3lis331dl-accel",
-		.data = H3LIS331DL_DRIVER_NAME,
+		.data = H3LIS331DL_ACCEL_DEV_NAME,
 	},
 	{
 		.compatible = "st,lis3l02dq",
