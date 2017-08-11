@@ -205,8 +205,8 @@ static struct iio_channel *of_iio_channel_get_by_name(struct device_node *np,
 		if (!IS_ERR(chan) || PTR_ERR(chan) == -EPROBE_DEFER)
 			break;
 		else if (name && index >= 0) {
-			pr_err("ERROR: could not get IIO channel %s:%s(%i)\n",
-				np->full_name, name ? name : "", index);
+			pr_err("ERROR: could not get IIO channel %pOF:%s(%i)\n",
+				np, name ? name : "", index);
 			return NULL;
 		}
 
@@ -867,3 +867,63 @@ err_unlock:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(iio_write_channel_raw);
+
+unsigned int iio_get_channel_ext_info_count(struct iio_channel *chan)
+{
+	const struct iio_chan_spec_ext_info *ext_info;
+	unsigned int i = 0;
+
+	if (!chan->channel->ext_info)
+		return i;
+
+	for (ext_info = chan->channel->ext_info; ext_info->name; ext_info++)
+		++i;
+
+	return i;
+}
+EXPORT_SYMBOL_GPL(iio_get_channel_ext_info_count);
+
+static const struct iio_chan_spec_ext_info *iio_lookup_ext_info(
+						const struct iio_channel *chan,
+						const char *attr)
+{
+	const struct iio_chan_spec_ext_info *ext_info;
+
+	if (!chan->channel->ext_info)
+		return NULL;
+
+	for (ext_info = chan->channel->ext_info; ext_info->name; ++ext_info) {
+		if (!strcmp(attr, ext_info->name))
+			return ext_info;
+	}
+
+	return NULL;
+}
+
+ssize_t iio_read_channel_ext_info(struct iio_channel *chan,
+				  const char *attr, char *buf)
+{
+	const struct iio_chan_spec_ext_info *ext_info;
+
+	ext_info = iio_lookup_ext_info(chan, attr);
+	if (!ext_info)
+		return -EINVAL;
+
+	return ext_info->read(chan->indio_dev, ext_info->private,
+			      chan->channel, buf);
+}
+EXPORT_SYMBOL_GPL(iio_read_channel_ext_info);
+
+ssize_t iio_write_channel_ext_info(struct iio_channel *chan, const char *attr,
+				   const char *buf, size_t len)
+{
+	const struct iio_chan_spec_ext_info *ext_info;
+
+	ext_info = iio_lookup_ext_info(chan, attr);
+	if (!ext_info)
+		return -EINVAL;
+
+	return ext_info->write(chan->indio_dev, ext_info->private,
+			       chan->channel, buf, len);
+}
+EXPORT_SYMBOL_GPL(iio_write_channel_ext_info);
