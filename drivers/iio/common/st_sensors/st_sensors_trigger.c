@@ -51,12 +51,18 @@ static int st_sensors_new_samples_available(struct iio_dev *indio_dev,
 	 * to the channels on the sensor: either bit 0 for
 	 * one-dimensional sensors, or e.g. x,y,z for accelerometers,
 	 * gyroscopes or magnetometers. No sensor use more than 3
-	 * channels, so cut the other status bits here.
+	 * channels. If the device exports enable_axis mask check status
+	 * register against active_scan_mask otherwise if the sensor reports
+	 * just ZYXDA (drdy) field use it to check if new data is available.
 	 */
-	status &= 0x07;
+	if (sdata->sensor_settings->enable_axis.addr) {
+		status &= 0x07;
 
-	if (status & (u8)indio_dev->active_scan_mask[0])
+		if (status & (u8)indio_dev->active_scan_mask[0])
+			return 1;
+	} else if (status & 0x01) {
 		return 1;
+	}
 
 	return 0;
 }
