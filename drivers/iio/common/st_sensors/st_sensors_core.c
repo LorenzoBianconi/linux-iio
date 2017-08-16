@@ -473,7 +473,7 @@ int st_sensors_set_dataready_irq(struct iio_dev *indio_dev, bool enable)
 		 * there are some devices (e.g. LIS3MDL) where drdy line is
 		 * routed to a given pin but are data-ready irq is supported
 		 */
-		if (sdata->sensor_settings->drdy_irq.addr_stat_drdy)
+		if (sdata->sensor_settings->drdy_irq.stat_drdy.addr)
 			sdata->hw_irq_trigger = enable;
 		return 0;
 	}

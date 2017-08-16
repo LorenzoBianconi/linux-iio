@@ -120,7 +120,10 @@ static const struct st_sensor_settings st_gyro_sensors_settings[] = {
 			 * drain settings, but only for INT1 and not
 			 * for the DRDY line on INT2.
 			 */
-			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
+			.stat_drdy = {
+				.addr = ST_SENSORS_DEFAULT_STAT_ADDR,
+				.mask = 0x07,
+			},
 		},
 		.multi_read_bit = true,
 		.bootime = 2,
@@ -192,7 +195,10 @@ static const struct st_sensor_settings st_gyro_sensors_settings[] = {
 			 * drain settings, but only for INT1 and not
 			 * for the DRDY line on INT2.
 			 */
-			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
+			.stat_drdy = {
+				.addr = ST_SENSORS_DEFAULT_STAT_ADDR,
+				.mask = 0x07,
+			},
 		},
 		.multi_read_bit = true,
 		.bootime = 2,
@@ -259,7 +265,10 @@ static const struct st_sensor_settings st_gyro_sensors_settings[] = {
 			 * drain settings, but only for INT1 and not
 			 * for the DRDY line on INT2.
 			 */
-			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
+			.stat_drdy = {
+				.addr = ST_SENSORS_DEFAULT_STAT_ADDR,
+				.mask = 0x07,
+			},
 		},
 		.multi_read_bit = true,
 		.bootime = 2,
