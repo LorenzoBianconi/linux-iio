@@ -165,7 +165,10 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 			},
 			.addr_ihl = 0x25,
 			.mask_ihl = 0x02,
-			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
+			.stat_drdy = {
+				.addr = ST_SENSORS_DEFAULT_STAT_ADDR,
+				.mask = 0x07,
+			},
 		},
 		.sim = {
 			.addr = 0x23,
@@ -242,7 +245,10 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 			.mask_ihl = 0x80,
 			.addr_od = 0x22,
 			.mask_od = 0x40,
-			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
+			.stat_drdy = {
+				.addr = ST_SENSORS_DEFAULT_STAT_ADDR,
+				.mask = 0x07,
+			},
 		},
 		.sim = {
 			.addr = 0x23,
@@ -325,7 +331,10 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 			},
 			.addr_ihl = 0x23,
 			.mask_ihl = 0x40,
-			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
+			.stat_drdy = {
+				.addr = ST_SENSORS_DEFAULT_STAT_ADDR,
+				.mask = 0x07,
+			},
 			.ig1 = {
 				.en_addr = 0x23,
 				.en_mask = 0x08,
@@ -398,7 +407,10 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 				.addr = 0x21,
 				.mask = 0x04,
 			},
-			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
+			.stat_drdy = {
+				.addr = ST_SENSORS_DEFAULT_STAT_ADDR,
+				.mask = 0x07,
+			},
 		},
 		.sim = {
 			.addr = 0x21,
@@ -465,7 +477,10 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 			.mask_ihl = 0x80,
 			.addr_od = 0x22,
 			.mask_od = 0x40,
-			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
+			.stat_drdy = {
+				.addr = ST_SENSORS_DEFAULT_STAT_ADDR,
+				.mask = 0x07,
+			},
 		},
 		.sim = {
 			.addr = 0x21,
@@ -590,7 +605,10 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 				.addr = 0x21,
 				.mask = 0x04,
 			},
-			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
+			.stat_drdy = {
+				.addr = ST_SENSORS_DEFAULT_STAT_ADDR,
+				.mask = 0x07,
+			},
 		},
 		.sim = {
 			.addr = 0x21,
@@ -662,7 +680,10 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 			},
 			.addr_ihl = 0x25,
 			.mask_ihl = 0x02,
-			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
+			.stat_drdy = {
+				.addr = ST_SENSORS_DEFAULT_STAT_ADDR,
+				.mask = 0x07,
+			},
 		},
 		.sim = {
 			.addr = 0x23,
