@@ -256,6 +256,7 @@ static int sun4i_gpadc_read(struct iio_dev *indio_dev, int channel, int *val,
 
 err:
 	pm_runtime_put_autosuspend(indio_dev->dev.parent);
+	disable_irq(irq);
 	mutex_unlock(&info->mutex);
 
 	return ret;
@@ -351,7 +352,6 @@ static int sun4i_gpadc_read_raw(struct iio_dev *indio_dev,
 
 static const struct iio_info sun4i_gpadc_iio_info = {
 	.read_raw = sun4i_gpadc_read_raw,
-	.driver_module = THIS_MODULE,
 };
 
 static irqreturn_t sun4i_gpadc_temp_data_irq_handler(int irq, void *dev_id)
@@ -365,7 +365,6 @@ static irqreturn_t sun4i_gpadc_temp_data_irq_handler(int irq, void *dev_id)
 		complete(&info->completion);
 
 out:
-	disable_irq_nosync(info->temp_data_irq);
 	return IRQ_HANDLED;
 }
 
@@ -380,7 +379,6 @@ static irqreturn_t sun4i_gpadc_fifo_data_irq_handler(int irq, void *dev_id)
 		complete(&info->completion);
 
 out:
-	disable_irq_nosync(info->fifo_data_irq);
 	return IRQ_HANDLED;
 }
 

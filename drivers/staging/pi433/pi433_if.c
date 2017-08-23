@@ -92,6 +92,7 @@ struct pi433_device {
 	struct task_struct	*tx_task_struct;
 	wait_queue_head_t	tx_wait_queue;
 	u8			free_in_fifo;
+	char			buffer[MAX_MSG_SIZE];
 
 	/* rx related values */
 	struct pi433_rx_cfg	rx_cfg;
@@ -184,6 +185,7 @@ static void *DIO_irq_handler[NUM_DIO] = {
 static int
 rf69_set_rx_cfg(struct pi433_device *dev, struct pi433_rx_cfg *rx_cfg)
 {
+	int ret;
 	int payload_length;
 
 	/* receiver config */
@@ -210,7 +212,15 @@ rf69_set_rx_cfg(struct pi433_device *dev, struct pi433_rx_cfg *rx_cfg)
 	{
 		SET_CHECKED(rf69_set_fifo_fill_condition(dev->spi, always));
 	}
-	SET_CHECKED(rf69_set_packet_format  (dev->spi, rx_cfg->enable_length_byte));
+	if (rx_cfg->enable_length_byte == optionOn) {
+		ret = rf69_set_packet_format(dev->spi, packetLengthVar);
+		if (ret < 0)
+			return ret;
+	} else {
+		ret = rf69_set_packet_format(dev->spi, packetLengthFix);
+		if (ret < 0)
+			return ret;
+	}
 	SET_CHECKED(rf69_set_adressFiltering(dev->spi, rx_cfg->enable_address_filtering));
 	SET_CHECKED(rf69_set_crc_enable	    (dev->spi, rx_cfg->enable_crc));
 
@@ -249,6 +259,8 @@ rf69_set_rx_cfg(struct pi433_device *dev, struct pi433_rx_cfg *rx_cfg)
 static int
 rf69_set_tx_cfg(struct pi433_device *dev, struct pi433_tx_cfg *tx_cfg)
 {
+	int ret;
+
 	SET_CHECKED(rf69_set_frequency	(dev->spi, tx_cfg->frequency));
 	SET_CHECKED(rf69_set_bit_rate	(dev->spi, tx_cfg->bit_rate));
 	SET_CHECKED(rf69_set_modulation	(dev->spi, tx_cfg->modulation));
@@ -267,7 +279,15 @@ rf69_set_tx_cfg(struct pi433_device *dev, struct pi433_tx_cfg *tx_cfg)
 		SET_CHECKED(rf69_set_preamble_length(dev->spi, 0));
 	}
 	SET_CHECKED(rf69_set_sync_enable  (dev->spi, tx_cfg->enable_sync));
-	SET_CHECKED(rf69_set_packet_format(dev->spi, tx_cfg->enable_length_byte));
+	if (tx_cfg->enable_length_byte == optionOn) {
+		ret = rf69_set_packet_format(dev->spi, packetLengthVar);
+		if (ret < 0)
+			return ret;
+	} else {
+		ret = rf69_set_packet_format(dev->spi, packetLengthFix);
+		if (ret < 0)
+			return ret;
+	}
 	SET_CHECKED(rf69_set_crc_enable	  (dev->spi, tx_cfg->enable_crc));
 
 	/* configure sync, if enabled */
@@ -471,7 +491,7 @@ pi433_tx_thread(void *data)
 	struct pi433_device *device = data;
 	struct spi_device *spi = device->spi; /* needed for SET_CHECKED */
 	struct pi433_tx_cfg tx_cfg;
-	u8     buffer[MAX_MSG_SIZE];
+	u8     *buffer = device->buffer;
 	size_t size;
 	bool   rx_interrupted = false;
 	int    position, repetitions;
@@ -1105,14 +1125,13 @@ static int pi433_probe(struct spi_device *spi)
 	if (retval < 0)
 		return retval;
 
-	switch(retval)
-	{
-		case 0x24:
-			dev_dbg(&spi->dev, "found pi433 (ver. 0x%x)", retval);
-			break;
-		default:
-			dev_dbg(&spi->dev, "unknown chip version: 0x%x", retval);
-			return -ENODEV;
+	switch (retval) {
+	case 0x24:
+		dev_dbg(&spi->dev, "found pi433 (ver. 0x%x)", retval);
+		break;
+	default:
+		dev_dbg(&spi->dev, "unknown chip version: 0x%x", retval);
+		return -ENODEV;
 	}
 
 	/* Allocate driver data */
