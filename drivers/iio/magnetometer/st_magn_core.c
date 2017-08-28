@@ -323,6 +323,7 @@ static const struct st_sensor_settings st_magn_sensors_settings[] = {
 		.wai_addr = 0x4f,
 		.sensors_supported = {
 			[0] = LSM303AGR_MAGN_DEV_NAME,
+			[1] = LIS2MDL_MAGN_DEV_NAME,
 		},
 		.ch = (struct iio_chan_spec *)st_magn_3_16bit_channels,
 		.odr = {
@@ -435,7 +436,6 @@ static const struct attribute_group st_magn_attribute_group = {
 };
 
 static const struct iio_info magn_info = {
-	.driver_module = THIS_MODULE,
 	.attrs = &st_magn_attribute_group,
 	.read_raw = &st_magn_read_raw,
 	.write_raw = &st_magn_write_raw,
@@ -444,7 +444,6 @@ static const struct iio_info magn_info = {
 
 #ifdef CONFIG_IIO_TRIGGER
 static const struct iio_trigger_ops st_magn_trigger_ops = {
-	.owner = THIS_MODULE,
 	.set_trigger_state = ST_MAGN_TRIGGER_SET_STATE,
 	.validate_device = st_sensors_validate_device,
 };
