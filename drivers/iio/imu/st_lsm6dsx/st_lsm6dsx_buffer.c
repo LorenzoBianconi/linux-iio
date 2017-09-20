@@ -215,7 +215,7 @@ out:
  *
  * Return: Number of bytes read from the FIFO
  */
-static int st_lsm6dsx_read_fifo(struct st_lsm6dsx_hw *hw)
+int st_lsm6dsx_read_fifo(struct st_lsm6dsx_hw *hw)
 {
 	u16 fifo_len, pattern_len = hw->sip * ST_LSM6DSX_SAMPLE_SIZE;
 	u16 fifo_diff_mask = hw->settings->fifo_ops.fifo_diff.mask;
@@ -311,7 +311,7 @@ int st_lsm6dsx_flush_fifo(struct st_lsm6dsx_hw *hw)
 
 	mutex_lock(&hw->fifo_lock);
 
-	st_lsm6dsx_read_fifo(hw);
+	hw->settings->fifo_ops.read_fifo(hw);
 	err = st_lsm6dsx_set_fifo_mode(hw, ST_LSM6DSX_FIFO_BYPASS);
 
 	mutex_unlock(&hw->fifo_lock);
@@ -398,7 +398,7 @@ static irqreturn_t st_lsm6dsx_handler_thread(int irq, void *private)
 	int count;
 
 	mutex_lock(&hw->fifo_lock);
-	count = st_lsm6dsx_read_fifo(hw);
+	count = hw->settings->fifo_ops.read_fifo(hw);
 	mutex_unlock(&hw->fifo_lock);
 
 	return !count ? IRQ_NONE : IRQ_HANDLED;
