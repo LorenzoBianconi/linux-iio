@@ -305,7 +305,6 @@ static int ccs811_set_trigger_state(struct iio_trigger *trig,
 
 static const struct iio_trigger_ops ccs811_trigger_ops = {
 	.set_trigger_state = ccs811_set_trigger_state,
-	.owner = THIS_MODULE,
 };
 
 static irqreturn_t ccs811_trigger_handler(int irq, void *p)

@@ -418,11 +418,11 @@ static ssize_t mma8452_show_os_ratio_avail(struct device *dev,
 }
 
 static IIO_DEV_ATTR_SAMP_FREQ_AVAIL(mma8452_show_samp_freq_avail);
-static IIO_DEVICE_ATTR(in_accel_scale_available, S_IRUGO,
+static IIO_DEVICE_ATTR(in_accel_scale_available, 0444,
 		       mma8452_show_scale_avail, NULL, 0);
 static IIO_DEVICE_ATTR(in_accel_filter_high_pass_3db_frequency_available,
-		       S_IRUGO, mma8452_show_hp_cutoff_avail, NULL, 0);
-static IIO_DEVICE_ATTR(in_accel_oversampling_ratio_available, S_IRUGO,
+		       0444, mma8452_show_hp_cutoff_avail, NULL, 0);
+static IIO_DEVICE_ATTR(in_accel_oversampling_ratio_available, 0444,
 		       mma8452_show_os_ratio_avail, NULL, 0);
 
 static int mma8452_get_samp_freq_index(struct mma8452_data *data,
@@ -792,7 +792,7 @@ static int mma8452_get_event_regs(struct mma8452_data *data,
 	}
 }
 
-static int mma8452_read_thresh(struct iio_dev *indio_dev,
+static int mma8452_read_event_value(struct iio_dev *indio_dev,
 			       const struct iio_chan_spec *chan,
 			       enum iio_event_type type,
 			       enum iio_event_direction dir,
@@ -855,7 +855,7 @@ static int mma8452_read_thresh(struct iio_dev *indio_dev,
 	}
 }
 
-static int mma8452_write_thresh(struct iio_dev *indio_dev,
+static int mma8452_write_event_value(struct iio_dev *indio_dev,
 				const struct iio_chan_spec *chan,
 				enum iio_event_type type,
 				enum iio_event_direction dir,
@@ -1088,8 +1088,8 @@ done:
 }
 
 static int mma8452_reg_access_dbg(struct iio_dev *indio_dev,
-				  unsigned reg, unsigned writeval,
-				  unsigned *readval)
+				  unsigned int reg, unsigned int writeval,
+				  unsigned int *readval)
 {
 	int ret;
 	struct mma8452_data *data = iio_priv(indio_dev);
@@ -1391,8 +1391,8 @@ static const struct iio_info mma8452_info = {
 	.read_raw = &mma8452_read_raw,
 	.write_raw = &mma8452_write_raw,
 	.event_attrs = &mma8452_event_attribute_group,
-	.read_event_value = &mma8452_read_thresh,
-	.write_event_value = &mma8452_write_thresh,
+	.read_event_value = &mma8452_read_event_value,
+	.write_event_value = &mma8452_write_event_value,
 	.read_event_config = &mma8452_read_event_config,
 	.write_event_config = &mma8452_write_event_config,
 	.debugfs_reg_access = &mma8452_reg_access_dbg,

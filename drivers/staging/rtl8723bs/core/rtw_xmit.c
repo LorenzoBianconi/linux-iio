@@ -2166,7 +2166,7 @@ void rtw_alloc_hwxmits(struct adapter *padapter)
 
 	pxmitpriv->hwxmits = NULL;
 
-	pxmitpriv->hwxmits = (struct hw_xmit *)rtw_zmalloc(sizeof(struct hw_xmit) * pxmitpriv->hwxmit_entry);
+	pxmitpriv->hwxmits = rtw_zmalloc(sizeof(struct hw_xmit) * pxmitpriv->hwxmit_entry);
 
 	if (pxmitpriv->hwxmits == NULL) {
 		DBG_871X("alloc hwxmits fail!...\n");
@@ -3002,7 +3002,7 @@ int rtw_xmit_thread(void *context)
 
 
 	err = _SUCCESS;
-	padapter = (struct adapter *)context;
+	padapter = context;
 
 	thread_enter("RTW_XMIT_THREAD");
 

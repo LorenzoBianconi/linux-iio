@@ -24,6 +24,7 @@
 #include <crypto/ctr.h>
 #include <crypto/des.h>
 #include <crypto/xts.h>
+#include <crypto/scatterwalk.h>
 
 #include "ssi_config.h"
 #include "ssi_driver.h"
@@ -540,7 +541,6 @@ ssi_blkcipher_create_setup_desc(
 		break;
 	default:
 		SSI_LOG_ERR("Unsupported cipher mode (%d)\n", cipher_mode);
-		BUG();
 	}
 }
 
@@ -696,17 +696,31 @@ static int ssi_blkcipher_complete(struct device *dev,
 				  void __iomem *cc_base)
 {
 	int completion_error = 0;
-	u32 inflight_counter;
+	struct ablkcipher_request *req = (struct ablkcipher_request *)areq;
 
 	ssi_buffer_mgr_unmap_blkcipher_request(dev, req_ctx, ivsize, src, dst);
 
-	/*Set the inflight couter value to local variable*/
-	inflight_counter =  ctx_p->drvdata->inflight_counter;
 	/*Decrease the inflight counter*/
 	if (ctx_p->flow_mode == BYPASS && ctx_p->drvdata->inflight_counter > 0)
 		ctx_p->drvdata->inflight_counter--;
 
 	if (areq) {
+		/*
+		 * The crypto API expects us to set the req->info to the last
+		 * ciphertext block. For encrypt, simply copy from the result.
+		 * For decrypt, we must copy from a saved buffer since this
+		 * could be an in-place decryption operation and the src is
+		 * lost by this point.
+		 */
+		if (req_ctx->gen_ctx.op_type == DRV_CRYPTO_DIRECTION_DECRYPT)  {
+			memcpy(req->info, req_ctx->backup_info, ivsize);
+			kfree(req_ctx->backup_info);
+		} else {
+			scatterwalk_map_and_copy(req->info, req->dst,
+						 (req->nbytes - ivsize),
+						 ivsize, 0);
+		}
+
 		ablkcipher_request_complete(areq, completion_error);
 		return 0;
 	}
@@ -739,11 +753,13 @@ static int ssi_blkcipher_process(
 	if (unlikely(validate_data_size(ctx_p, nbytes))) {
 		SSI_LOG_ERR("Unsupported data size %d.\n", nbytes);
 		crypto_tfm_set_flags(tfm, CRYPTO_TFM_RES_BAD_BLOCK_LEN);
-		return -EINVAL;
+		rc = -EINVAL;
+		goto exit_process;
 	}
 	if (nbytes == 0) {
 		/* No data to process is valid */
-		return 0;
+		rc = 0;
+		goto exit_process;
 	}
 	/*For CTS in case of data size aligned to 16 use CBC mode*/
 	if (((nbytes % AES_BLOCK_SIZE) == 0) && (ctx_p->cipher_mode == DRV_CIPHER_CBC_CTS)) {
@@ -818,6 +834,9 @@ exit_process:
 	if (cts_restore_flag != 0)
 		ctx_p->cipher_mode = DRV_CIPHER_CBC_CTS;
 
+	if (rc != -EINPROGRESS)
+		kfree(req_ctx->backup_info);
+
 	return rc;
 }
 
@@ -858,7 +877,6 @@ static int ssi_ablkcipher_encrypt(struct ablkcipher_request *req)
 	struct blkcipher_req_ctx *req_ctx = ablkcipher_request_ctx(req);
 	unsigned int ivsize = crypto_ablkcipher_ivsize(ablk_tfm);
 
-	req_ctx->backup_info = req->info;
 	req_ctx->is_giv = false;
 
 	return ssi_blkcipher_process(tfm, req_ctx, req->dst, req->src, req->nbytes, req->info, ivsize, (void *)req, DRV_CRYPTO_DIRECTION_ENCRYPT);
@@ -871,8 +889,18 @@ static int ssi_ablkcipher_decrypt(struct ablkcipher_request *req)
 	struct blkcipher_req_ctx *req_ctx = ablkcipher_request_ctx(req);
 	unsigned int ivsize = crypto_ablkcipher_ivsize(ablk_tfm);
 
-	req_ctx->backup_info = req->info;
+	/*
+	 * Allocate and save the last IV sized bytes of the source, which will
+	 * be lost in case of in-place decryption and might be needed for CTS.
+	 */
+	req_ctx->backup_info = kmalloc(ivsize, GFP_KERNEL);
+	if (!req_ctx->backup_info)
+		return -ENOMEM;
+
+	scatterwalk_map_and_copy(req_ctx->backup_info, req->src,
+				 (req->nbytes - ivsize), ivsize, 0);
 	req_ctx->is_giv = false;
+
 	return ssi_blkcipher_process(tfm, req_ctx, req->dst, req->src, req->nbytes, req->info, ivsize, (void *)req, DRV_CRYPTO_DIRECTION_DECRYPT);
 }
 
@@ -1283,9 +1311,8 @@ int ssi_ablkcipher_alloc(struct ssi_drvdata *drvdata)
 	if (!ablkcipher_handle)
 		return -ENOMEM;
 
-	drvdata->blkcipher_handle = ablkcipher_handle;
-
 	INIT_LIST_HEAD(&ablkcipher_handle->blkcipher_alg_list);
+	drvdata->blkcipher_handle = ablkcipher_handle;
 
 	/* Linux crypto */
 	SSI_LOG_DEBUG("Number of algorithms = %zu\n", ARRAY_SIZE(blkcipher_algs));
