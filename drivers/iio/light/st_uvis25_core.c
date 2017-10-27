@@ -89,7 +89,7 @@ static int st_uvis25_set_enable(struct st_uvis25_hw *hw, bool enable)
 
 static int st_uvis25_read_oneshot(struct st_uvis25_hw *hw, u8 addr, int *val)
 {
-	int err, data;
+	int err;
 
 	err = st_uvis25_set_enable(hw, true);
 	if (err < 0)
@@ -97,13 +97,11 @@ static int st_uvis25_read_oneshot(struct st_uvis25_hw *hw, u8 addr, int *val)
 
 	msleep(1500);
 
-	err = regmap_read(hw->regmap, addr, &data);
+	err = regmap_read(hw->regmap, addr, val);
 	if (err < 0)
 		return err;
 
 	st_uvis25_set_enable(hw, false);
-
-	*val = data;
 
 	return IIO_VAL_INT;
 }
