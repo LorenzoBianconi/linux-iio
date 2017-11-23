@@ -480,7 +480,7 @@ int	init_mlme_ext_priv(struct adapter *padapter)
 	/* fill_fwpriv(padapter, &(pmlmeext->fwpriv)); */
 
 	init_mlme_ext_priv_value(padapter);
-	pmlmeinfo->bAcceptAddbaReq = pregistrypriv->bAcceptAddbaReq;
+	pmlmeinfo->accept_addba_req = pregistrypriv->accept_addba_req;
 
 	init_mlme_ext_timer(padapter);
 
@@ -584,7 +584,7 @@ void mgt_dispatcher(struct adapter *padapter, union recv_frame *precv_frame)
 			ptable->func = &OnAuth;
 		else
 			ptable->func = &OnAuthClient;
-		/* pass through */
+		/* fall through */
 	case WIFI_ASSOCREQ:
 	case WIFI_REASSOCREQ:
 		_mgt_dispatcher(padapter, ptable, precv_frame);
@@ -1974,7 +1974,7 @@ unsigned int OnAction_back(struct adapter *padapter, union recv_frame *precv_fra
 			/* process_addba_req(padapter, (u8 *)&(pmlmeinfo->ADDBA_req), GetAddr3Ptr(pframe)); */
 			process_addba_req(padapter, (u8 *)&(pmlmeinfo->ADDBA_req), addr);
 
-			if (pmlmeinfo->bAcceptAddbaReq) {
+			if (pmlmeinfo->accept_addba_req) {
 				issue_action_BA(padapter, addr, RTW_WLAN_ACTION_ADDBA_RESP, 0);
 			} else{
 				issue_action_BA(padapter, addr, RTW_WLAN_ACTION_ADDBA_RESP, 37);/* reject ADDBA Req */
@@ -2831,7 +2831,9 @@ void issue_probersp(struct adapter *padapter, unsigned char *da, u8 is_valid_p2p
 
 }
 
-static int _issue_probereq(struct adapter *padapter, struct ndis_802_11_ssid *pssid, u8 *da, u8 ch, bool append_wps, int wait_ack)
+static int _issue_probereq(struct adapter *padapter,
+			   struct ndis_802_11_ssid *pssid,
+			   u8 *da, u8 ch, bool append_wps, bool wait_ack)
 {
 	int ret = _FAIL;
 	struct xmit_frame		*pmgntframe;
@@ -3430,7 +3432,8 @@ exit:
 }
 
 /* when wait_ack is ture, this function shoule be called at process context */
-static int _issue_nulldata(struct adapter *padapter, unsigned char *da, unsigned int power_mode, int wait_ack)
+static int _issue_nulldata(struct adapter *padapter, unsigned char *da,
+			   unsigned int power_mode, bool wait_ack)
 {
 	int ret = _FAIL;
 	struct xmit_frame			*pmgntframe;
@@ -3591,7 +3594,8 @@ s32 issue_nulldata_in_interrupt(struct adapter *padapter, u8 *da)
 }
 
 /* when wait_ack is ture, this function shoule be called at process context */
-static int _issue_qos_nulldata(struct adapter *padapter, unsigned char *da, u16 tid, int wait_ack)
+static int _issue_qos_nulldata(struct adapter *padapter, unsigned char *da,
+			       u16 tid, bool wait_ack)
 {
 	int ret = _FAIL;
 	struct xmit_frame			*pmgntframe;
@@ -3715,7 +3719,8 @@ exit:
 	return ret;
 }
 
-static int _issue_deauth(struct adapter *padapter, unsigned char *da, unsigned short reason, u8 wait_ack)
+static int _issue_deauth(struct adapter *padapter, unsigned char *da,
+			 unsigned short reason, bool wait_ack)
 {
 	struct xmit_frame			*pmgntframe;
 	struct pkt_attrib			*pattrib;
@@ -5825,8 +5830,10 @@ void linked_status_chk(struct adapter *padapter)
 
 }
 
-void survey_timer_hdl(struct adapter *padapter)
+void survey_timer_hdl(struct timer_list *t)
 {
+	struct adapter *padapter =
+		from_timer(padapter, t, mlmeextpriv.survey_timer);
 	struct cmd_obj	*ph2c;
 	struct sitesurvey_parm	*psurveyPara;
 	struct cmd_priv 				*pcmdpriv = &padapter->cmdpriv;
@@ -5872,8 +5879,10 @@ exit_survey_timer_hdl:
 	return;
 }
 
-void link_timer_hdl(struct adapter *padapter)
+void link_timer_hdl(struct timer_list *t)
 {
+	struct adapter *padapter =
+		from_timer(padapter, t, mlmeextpriv.link_timer);
 	/* static unsigned int		rx_pkt = 0; */
 	/* static u64				tx_cnt = 0; */
 	/* struct xmit_priv 	*pxmitpriv = &(padapter->xmitpriv); */
@@ -5922,8 +5931,9 @@ void link_timer_hdl(struct adapter *padapter)
 	return;
 }
 
-void addba_timer_hdl(struct sta_info *psta)
+void addba_timer_hdl(struct timer_list *t)
 {
+	struct sta_info *psta = from_timer(psta, t, addba_retry_timer);
 	struct ht_priv *phtpriv;
 
 	if (!psta)
@@ -5938,8 +5948,10 @@ void addba_timer_hdl(struct sta_info *psta)
 	}
 }
 
-void sa_query_timer_hdl(struct adapter *padapter)
+void sa_query_timer_hdl(struct timer_list *t)
 {
+	struct adapter *padapter =
+		from_timer(padapter, t, mlmeextpriv.sa_query_timer);
 	struct mlme_priv *pmlmepriv = &padapter->mlmepriv;
 	/* disconnect */
 	spin_lock_bh(&pmlmepriv->lock);

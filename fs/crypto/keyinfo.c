@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * key management facility for FS encryption support.
  *
@@ -109,6 +110,11 @@ static int validate_user_key(struct fscrypt_info *crypt_info,
 		goto out;
 	}
 	ukp = user_key_payload_locked(keyring_key);
+	if (!ukp) {
+		/* key was revoked before we acquired its semaphore */
+		res = -EKEYREVOKED;
+		goto out;
+	}
 	if (ukp->datalen != sizeof(struct fscrypt_key)) {
 		res = -EINVAL;
 		goto out;
@@ -368,7 +374,7 @@ void fscrypt_put_encryption_info(struct inode *inode, struct fscrypt_info *ci)
 	struct fscrypt_info *prev;
 
 	if (ci == NULL)
-		ci = ACCESS_ONCE(inode->i_crypt_info);
+		ci = READ_ONCE(inode->i_crypt_info);
 	if (ci == NULL)
 		return;
 

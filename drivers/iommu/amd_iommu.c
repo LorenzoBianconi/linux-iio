@@ -2773,14 +2773,16 @@ int __init amd_iommu_init_api(void)
 
 int __init amd_iommu_init_dma_ops(void)
 {
-	swiotlb        = iommu_pass_through ? 1 : 0;
+	swiotlb        = (iommu_pass_through || sme_me_mask) ? 1 : 0;
 	iommu_detected = 1;
 
 	/*
 	 * In case we don't initialize SWIOTLB (actually the common case
-	 * when AMD IOMMU is enabled), make sure there are global
-	 * dma_ops set as a fall-back for devices not handled by this
-	 * driver (for example non-PCI devices).
+	 * when AMD IOMMU is enabled and SME is not active), make sure there
+	 * are global dma_ops set as a fall-back for devices not handled by
+	 * this driver (for example non-PCI devices). When SME is active,
+	 * make sure that swiotlb variable remains set so the global dma_ops
+	 * continue to be SWIOTLB.
 	 */
 	if (!swiotlb)
 		dma_ops = &nommu_dma_ops;
@@ -3046,6 +3048,7 @@ static size_t amd_iommu_unmap(struct iommu_domain *dom, unsigned long iova,
 	mutex_unlock(&domain->api_lock);
 
 	domain_flush_tlb_pde(domain);
+	domain_flush_complete(domain);
 
 	return unmap_size;
 }
@@ -4170,16 +4173,26 @@ static void irq_remapping_free(struct irq_domain *domain, unsigned int virq,
 	irq_domain_free_irqs_common(domain, virq, nr_irqs);
 }
 
-static void irq_remapping_activate(struct irq_domain *domain,
-				   struct irq_data *irq_data)
+static void amd_ir_update_irte(struct irq_data *irqd, struct amd_iommu *iommu,
+			       struct amd_ir_data *ir_data,
+			       struct irq_2_irte *irte_info,
+			       struct irq_cfg *cfg);
+
+static int irq_remapping_activate(struct irq_domain *domain,
+				  struct irq_data *irq_data, bool early)
 {
 	struct amd_ir_data *data = irq_data->chip_data;
 	struct irq_2_irte *irte_info = &data->irq_2_irte;
 	struct amd_iommu *iommu = amd_iommu_rlookup_table[irte_info->devid];
+	struct irq_cfg *cfg = irqd_cfg(irq_data);
 
-	if (iommu)
-		iommu->irte_ops->activate(data->entry, irte_info->devid,
-					  irte_info->index);
+	if (!iommu)
+		return 0;
+
+	iommu->irte_ops->activate(data->entry, irte_info->devid,
+				  irte_info->index);
+	amd_ir_update_irte(irq_data, iommu, data, irte_info, cfg);
+	return 0;
 }
 
 static void irq_remapping_deactivate(struct irq_domain *domain,
@@ -4266,6 +4279,22 @@ static int amd_ir_set_vcpu_affinity(struct irq_data *data, void *vcpu_info)
 	return modify_irte_ga(irte_info->devid, irte_info->index, irte, ir_data);
 }
 
+
+static void amd_ir_update_irte(struct irq_data *irqd, struct amd_iommu *iommu,
+			       struct amd_ir_data *ir_data,
+			       struct irq_2_irte *irte_info,
+			       struct irq_cfg *cfg)
+{
+
+	/*
+	 * Atomically updates the IRTE with the new destination, vector
+	 * and flushes the interrupt entry cache.
+	 */
+	iommu->irte_ops->set_affinity(ir_data->entry, irte_info->devid,
+				      irte_info->index, cfg->vector,
+				      cfg->dest_apicid);
+}
+
 static int amd_ir_set_affinity(struct irq_data *data,
 			       const struct cpumask *mask, bool force)
 {
@@ -4283,13 +4312,7 @@ static int amd_ir_set_affinity(struct irq_data *data,
 	if (ret < 0 || ret == IRQ_SET_MASK_OK_DONE)
 		return ret;
 
-	/*
-	 * Atomically updates the IRTE with the new destination, vector
-	 * and flushes the interrupt entry cache.
-	 */
-	iommu->irte_ops->set_affinity(ir_data->entry, irte_info->devid,
-			    irte_info->index, cfg->vector, cfg->dest_apicid);
-
+	amd_ir_update_irte(data, iommu, ir_data, irte_info, cfg);
 	/*
 	 * After this point, all the interrupts will start arriving
 	 * at the new destination. So, time to cleanup the previous

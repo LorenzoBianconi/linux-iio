@@ -43,6 +43,7 @@ struct blkcipher_req_ctx {
 	u32 out_nents;
 	u32 out_mlli_nents;
 	u8 *backup_info; /*store iv for generated IV flow*/
+	u8 *iv;
 	bool is_giv;
 	struct mlli_params mlli_params;
 };
@@ -75,7 +76,7 @@ struct arm_hw_key_info {
 
 static inline bool ssi_is_hw_key(struct crypto_tfm *tfm)
 {
-	return 0;
+	return false;
 }
 
 #endif /* CRYPTO_TFM_REQ_HW_KEY */

@@ -204,25 +204,31 @@ VCHIQ_STATUS_T
 vchiq_platform_init_state(VCHIQ_STATE_T *state)
 {
 	VCHIQ_STATUS_T status = VCHIQ_SUCCESS;
+	struct vchiq_2835_state *platform_state;
 
-	state->platform_state = kzalloc(sizeof(struct vchiq_2835_state), GFP_KERNEL);
-	((struct vchiq_2835_state *)state->platform_state)->inited = 1;
-	status = vchiq_arm_init_state(state, &((struct vchiq_2835_state *)state->platform_state)->arm_state);
+	state->platform_state = kzalloc(sizeof(*platform_state), GFP_KERNEL);
+	platform_state = (struct vchiq_2835_state *)state->platform_state;
+
+	platform_state->inited = 1;
+	status = vchiq_arm_init_state(state, &platform_state->arm_state);
+
 	if (status != VCHIQ_SUCCESS)
-	{
-		((struct vchiq_2835_state *)state->platform_state)->inited = 0;
-	}
+		platform_state->inited = 0;
+
 	return status;
 }
 
 VCHIQ_ARM_STATE_T*
 vchiq_platform_get_arm_state(VCHIQ_STATE_T *state)
 {
-	if (!((struct vchiq_2835_state *)state->platform_state)->inited)
-	{
+	struct vchiq_2835_state *platform_state;
+
+	platform_state   = (struct vchiq_2835_state *)state->platform_state;
+
+	if (!platform_state->inited)
 		BUG();
-	}
-	return &((struct vchiq_2835_state *)state->platform_state)->arm_state;
+
+	return &platform_state->arm_state;
 }
 
 void
@@ -381,12 +387,12 @@ cleanup_pagelistinfo(struct vchiq_pagelist_info *pagelistinfo)
 }
 
 /* There is a potential problem with partial cache lines (pages?)
-** at the ends of the block when reading. If the CPU accessed anything in
-** the same line (page?) then it may have pulled old data into the cache,
-** obscuring the new data underneath. We can solve this by transferring the
-** partial cache lines separately, and allowing the ARM to copy into the
-** cached area.
-*/
+ * at the ends of the block when reading. If the CPU accessed anything in
+ * the same line (page?) then it may have pulled old data into the cache,
+ * obscuring the new data underneath. We can solve this by transferring the
+ * partial cache lines separately, and allowing the ARM to copy into the
+ * cached area.
+ */
 
 static struct vchiq_pagelist_info *
 create_pagelist(char __user *buf, size_t count, unsigned short type,
@@ -413,15 +419,15 @@ create_pagelist(char __user *buf, size_t count, unsigned short type,
 			sizeof(struct vchiq_pagelist_info);
 
 	/* Allocate enough storage to hold the page pointers and the page
-	** list
-	*/
+	 * list
+	 */
 	pagelist = dma_zalloc_coherent(g_dev,
 				       pagelist_size,
 				       &dma_addr,
 				       GFP_KERNEL);
 
-	vchiq_log_trace(vchiq_arm_log_level, "create_pagelist - %pK",
-			pagelist);
+	vchiq_log_trace(vchiq_arm_log_level, "%s - %pK", __func__, pagelist);
+
 	if (!pagelist)
 		return NULL;
 
@@ -481,9 +487,8 @@ create_pagelist(char __user *buf, size_t count, unsigned short type,
 
 		if (actual_pages != num_pages) {
 			vchiq_log_info(vchiq_arm_log_level,
-				       "create_pagelist - only %d/%d pages locked",
-				       actual_pages,
-				       num_pages);
+				       "%s - only %d/%d pages locked",
+				       __func__, actual_pages, num_pages);
 
 			/* This is probably due to the process being killed */
 			while (actual_pages > 0)
