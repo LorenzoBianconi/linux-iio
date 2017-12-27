@@ -37,6 +37,7 @@
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
 #include <linux/pm.h>
+#include <linux/regmap.h>
 
 #include <linux/platform_data/st_sensors_pdata.h>
 
@@ -277,36 +278,9 @@ static const struct iio_chan_spec st_lsm6dsx_gyro_channels[] = {
 	IIO_CHAN_SOFT_TIMESTAMP(3),
 };
 
-int st_lsm6dsx_write_with_mask(struct st_lsm6dsx_hw *hw, u8 addr, u8 mask,
-			       u8 val)
-{
-	u8 data;
-	int err;
-
-	mutex_lock(&hw->lock);
-
-	err = hw->tf->read(hw->dev, addr, sizeof(data), &data);
-	if (err < 0) {
-		dev_err(hw->dev, "failed to read %02x register\n", addr);
-		goto out;
-	}
-
-	data = (data & ~mask) | ((val << __ffs(mask)) & mask);
-
-	err = hw->tf->write(hw->dev, addr, sizeof(data), &data);
-	if (err < 0)
-		dev_err(hw->dev, "failed to write %02x register\n", addr);
-
-out:
-	mutex_unlock(&hw->lock);
-
-	return err;
-}
-
 static int st_lsm6dsx_check_whoami(struct st_lsm6dsx_hw *hw, int id)
 {
-	int err, i, j;
-	u8 data;
+	int err, i, j, data;
 
 	for (i = 0; i < ARRAY_SIZE(st_lsm6dsx_sensor_settings); i++) {
 		for (j = 0; j < ST_LSM6DSX_MAX_ID; j++) {
@@ -322,8 +296,7 @@ static int st_lsm6dsx_check_whoami(struct st_lsm6dsx_hw *hw, int id)
 		return -ENODEV;
 	}
 
-	err = hw->tf->read(hw->dev, ST_LSM6DSX_REG_WHOAMI_ADDR, sizeof(data),
-			   &data);
+	err = regmap_read(hw->regmap, ST_LSM6DSX_REG_WHOAMI_ADDR, &data);
 	if (err < 0) {
 		dev_err(hw->dev, "failed to read whoami register\n");
 		return err;
@@ -431,6 +404,7 @@ int st_lsm6dsx_sensor_disable(struct st_lsm6dsx_sensor *sensor)
 static int st_lsm6dsx_read_oneshot(struct st_lsm6dsx_sensor *sensor,
 				   u8 addr, int *val)
 {
+	struct st_lsm6dsx_hw *hw = sensor->hw;
 	int err, delay;
 	__le16 data;
 
@@ -441,8 +415,7 @@ static int st_lsm6dsx_read_oneshot(struct st_lsm6dsx_sensor *sensor,
 	delay = 1000000 / sensor->odr;
 	usleep_range(delay, 2 * delay);
 
-	err = sensor->hw->tf->read(sensor->hw->dev, addr, sizeof(data),
-				   (u8 *)&data);
+	err = regmap_bulk_read(hw->regmap, addr, &data, sizeof(data));
 	if (err < 0)
 		return err;
 
@@ -657,12 +630,11 @@ static int st_lsm6dsx_get_drdy_reg(struct st_lsm6dsx_hw *hw, u8 *drdy_reg)
 
 static int st_lsm6dsx_init_device(struct st_lsm6dsx_hw *hw)
 {
-	u8 data, drdy_int_reg;
+	u8 drdy_int_reg;
 	int err;
 
-	data = ST_LSM6DSX_REG_RESET_MASK;
-	err = hw->tf->write(hw->dev, ST_LSM6DSX_REG_RESET_ADDR, sizeof(data),
-			    &data);
+	err = regmap_write(hw->regmap, ST_LSM6DSX_REG_RESET_ADDR,
+			   ST_LSM6DSX_REG_RESET_MASK);
 	if (err < 0)
 		return err;
 
@@ -731,7 +703,7 @@ static struct iio_dev *st_lsm6dsx_alloc_iiodev(struct st_lsm6dsx_hw *hw,
 }
 
 int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id, const char *name,
-		     const struct st_lsm6dsx_transfer_function *tf_ops)
+		     struct regmap *regmap)
 {
 	struct st_lsm6dsx_hw *hw;
 	int i, err;
@@ -742,13 +714,12 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id, const char *name,
 
 	dev_set_drvdata(dev, (void *)hw);
 
-	mutex_init(&hw->lock);
 	mutex_init(&hw->fifo_lock);
 	mutex_init(&hw->conf_lock);
 
 	hw->dev = dev;
 	hw->irq = irq;
-	hw->tf = tf_ops;
+	hw->regmap = regmap;
 
 	err = st_lsm6dsx_check_whoami(hw, hw_id);
 	if (err < 0)
