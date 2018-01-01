@@ -124,11 +124,12 @@ enum ina2xx_ids { ina219, ina226 };
 
 struct ina2xx_config {
 	u16 config_default;
-	int calibration_factor;
+	int calibration_value;
 	int shunt_voltage_lsb;	/* nV */
 	int bus_voltage_shift;	/* position of lsb */
 	int bus_voltage_lsb;	/* uV */
-	int power_lsb;		/* uW */
+	/* fixed relation between current and power lsb, uW/uA */
+	int power_lsb_factor;
 	enum ina2xx_ids chip_id;
 };
 
@@ -149,20 +150,20 @@ struct ina2xx_chip_info {
 static const struct ina2xx_config ina2xx_config[] = {
 	[ina219] = {
 		.config_default = INA219_CONFIG_DEFAULT,
-		.calibration_factor = 40960000,
+		.calibration_value = 4096,
 		.shunt_voltage_lsb = 10000,
 		.bus_voltage_shift = INA219_BUS_VOLTAGE_SHIFT,
 		.bus_voltage_lsb = 4000,
-		.power_lsb = 20000,
+		.power_lsb_factor = 20,
 		.chip_id = ina219,
 	},
 	[ina226] = {
 		.config_default = INA226_CONFIG_DEFAULT,
-		.calibration_factor = 5120000,
+		.calibration_value = 2048,
 		.shunt_voltage_lsb = 2500,
 		.bus_voltage_shift = 0,
 		.bus_voltage_lsb = 1250,
-		.power_lsb = 25000,
+		.power_lsb_factor = 25,
 		.chip_id = ina226,
 	},
 };
@@ -227,16 +228,26 @@ static int ina2xx_read_raw(struct iio_dev *indio_dev,
 			*val2 = 1000;
 			return IIO_VAL_FRACTIONAL;
 
-		case INA2XX_POWER:
-			/* processed (mW) = raw*lsb (uW) / 1000 */
-			*val = chip->config->power_lsb;
-			*val2 = 1000;
+		case INA2XX_CURRENT:
+			/*
+			 * processed (mA) = raw * current_lsb (mA)
+			 * current_lsb (mA) = shunt_voltage_lsb (nV) /
+			 *                    shunt_resistor (uOhm)
+			 */
+			*val = chip->config->shunt_voltage_lsb;
+			*val2 = chip->shunt_resistor_uohm;
 			return IIO_VAL_FRACTIONAL;
 
-		case INA2XX_CURRENT:
-			/* processed (mA) = raw (mA) */
-			*val = 1;
-			return IIO_VAL_INT;
+		case INA2XX_POWER:
+			/*
+			 * processed (mW) = raw * power_lsb (mW)
+			 * power_lsb (mW) = power_lsb_factor (mW/mA) *
+			 *                  current_lsb (mA)
+			 */
+			*val = chip->config->power_lsb_factor *
+			       chip->config->shunt_voltage_lsb;
+			*val2 = chip->shunt_resistor_uohm;
+			return IIO_VAL_FRACTIONAL;
 		}
 
 	case IIO_CHAN_INFO_HARDWAREGAIN:
@@ -541,25 +552,21 @@ static ssize_t ina2xx_allow_async_readout_store(struct device *dev,
 }
 
 /*
- * Set current LSB to 1mA, shunt is in uOhms
- * (equation 13 in datasheet). We hardcode a Current_LSB
- * of 1.0 x10-3. The only remaining parameter is RShunt.
- * There is no need to expose the CALIBRATION register
- * to the user for now. But we need to reset this register
- * if the user updates RShunt after driver init, e.g upon
- * reading an EEPROM/Probe-type value.
+ * Calibration register is set to the best value, which eliminates
+ * truncation errors on calculating current register in hardware.
+ * According to datasheet (INA 226: eq. 3, INA219: eq. 4) the best values
+ * are 2048 for ina226 and 4096 for ina219. They are hardcoded as
+ * calibration_value.
  */
 static int ina2xx_set_calibration(struct ina2xx_chip_info *chip)
 {
-	u16 regval = DIV_ROUND_CLOSEST(chip->config->calibration_factor,
-				   chip->shunt_resistor_uohm);
-
-	return regmap_write(chip->regmap, INA2XX_CALIBRATION, regval);
+	return regmap_write(chip->regmap, INA2XX_CALIBRATION,
+			    chip->config->calibration_value);
 }
 
 static int set_shunt_resistor(struct ina2xx_chip_info *chip, unsigned int val)
 {
-	if (val <= 0 || val > chip->config->calibration_factor)
+	if (val == 0 || val > INT_MAX)
 		return -EINVAL;
 
 	chip->shunt_resistor_uohm = val;
@@ -589,11 +596,6 @@ static ssize_t ina2xx_shunt_resistor_store(struct device *dev,
 		return ret;
 
 	ret = set_shunt_resistor(chip, val * 1000000 + val_fract);
-	if (ret)
-		return ret;
-
-	/* Update the Calibration register */
-	ret = ina2xx_set_calibration(chip);
 	if (ret)
 		return ret;
 
@@ -697,16 +699,11 @@ static const struct iio_chan_spec ina219_channels[] = {
 	IIO_CHAN_SOFT_TIMESTAMP(4),
 };
 
-static int ina2xx_work_buffer(struct iio_dev *indio_dev)
+static int ina2xx_conversion_ready(struct iio_dev *indio_dev)
 {
 	struct ina2xx_chip_info *chip = iio_priv(indio_dev);
-	unsigned short data[8];
-	int bit, ret, i = 0;
-	s64 time_a, time_b;
+	int ret;
 	unsigned int alert;
-	int cnvr_need_clear = 0;
-
-	time_a = iio_get_time_ns(indio_dev);
 
 	/*
 	 * Because the timer thread and the chip conversion clock
@@ -719,23 +716,31 @@ static int ina2xx_work_buffer(struct iio_dev *indio_dev)
 	 * For now, we do an extra read of the MASK_ENABLE register (INA226)
 	 * resp. the BUS_VOLTAGE register (INA219).
 	 */
-	if (!chip->allow_async_readout)
-		do {
-			if (chip->config->chip_id == ina226) {
-				ret = regmap_read(chip->regmap,
-						  INA226_MASK_ENABLE, &alert);
-				alert &= INA226_CVRF;
-			} else {
-				ret = regmap_read(chip->regmap,
-						  INA2XX_BUS_VOLTAGE, &alert);
-				alert &= INA219_CNVR;
-				cnvr_need_clear = alert;
-			}
+	if (chip->config->chip_id == ina226) {
+		ret = regmap_read(chip->regmap,
+				  INA226_MASK_ENABLE, &alert);
+		alert &= INA226_CVRF;
+	} else {
+		ret = regmap_read(chip->regmap,
+				  INA2XX_BUS_VOLTAGE, &alert);
+		alert &= INA219_CNVR;
+	}
 
-			if (ret < 0)
-				return ret;
+	if (ret < 0)
+		return ret;
 
-		} while (!alert);
+	return !!alert;
+}
+
+static int ina2xx_work_buffer(struct iio_dev *indio_dev)
+{
+	struct ina2xx_chip_info *chip = iio_priv(indio_dev);
+	/* data buffer needs space for channel data and timestap */
+	unsigned short data[4 + sizeof(s64)/sizeof(short)];
+	int bit, ret, i = 0;
+	s64 time;
+
+	time = iio_get_time_ns(indio_dev);
 
 	/*
 	 * Single register reads: bulk_read will not work with ina226/219
@@ -751,26 +756,11 @@ static int ina2xx_work_buffer(struct iio_dev *indio_dev)
 			return ret;
 
 		data[i++] = val;
-
-		if (INA2XX_SHUNT_VOLTAGE + bit == INA2XX_POWER)
-			cnvr_need_clear = 0;
 	}
 
-	/* Dummy read on INA219 power register to clear CNVR flag */
-	if (cnvr_need_clear && chip->config->chip_id == ina219) {
-		unsigned int val;
+	iio_push_to_buffers_with_timestamp(indio_dev, data, time);
 
-		ret = regmap_read(chip->regmap, INA2XX_POWER, &val);
-		if (ret < 0)
-			return ret;
-	}
-
-	time_b = iio_get_time_ns(indio_dev);
-
-	iio_push_to_buffers_with_timestamp(indio_dev,
-					   (unsigned int *)data, time_a);
-
-	return (unsigned long)(time_b - time_a) / 1000;
+	return 0;
 };
 
 static int ina2xx_capture_thread(void *data)
@@ -778,7 +768,9 @@ static int ina2xx_capture_thread(void *data)
 	struct iio_dev *indio_dev = data;
 	struct ina2xx_chip_info *chip = iio_priv(indio_dev);
 	int sampling_us = SAMPLING_PERIOD(chip);
-	int buffer_us;
+	int ret;
+	struct timespec64 next, now, delta;
+	s64 delay_us;
 
 	/*
 	 * Poll a bit faster than the chip internal Fs, in case
@@ -787,13 +779,43 @@ static int ina2xx_capture_thread(void *data)
 	if (!chip->allow_async_readout)
 		sampling_us -= 200;
 
-	do {
-		buffer_us = ina2xx_work_buffer(indio_dev);
-		if (buffer_us < 0)
-			return buffer_us;
+	ktime_get_ts64(&next);
 
-		if (sampling_us > buffer_us)
-			udelay(sampling_us - buffer_us);
+	do {
+		while (!chip->allow_async_readout) {
+			ret = ina2xx_conversion_ready(indio_dev);
+			if (ret < 0)
+				return ret;
+
+			/*
+			 * If the conversion was not yet finished,
+			 * reset the reference timestamp.
+			 */
+			if (ret == 0)
+				ktime_get_ts64(&next);
+			else
+				break;
+		}
+
+		ret = ina2xx_work_buffer(indio_dev);
+		if (ret < 0)
+			return ret;
+
+		ktime_get_ts64(&now);
+
+		/*
+		 * Advance the timestamp for the next poll by one sampling
+		 * interval, and sleep for the remainder (next - now)
+		 * In case "next" has already passed, the interval is added
+		 * multiple times, i.e. samples are dropped.
+		 */
+		do {
+			timespec64_add_ns(&next, 1000 * sampling_us);
+			delta = timespec64_sub(next, now);
+			delay_us = div_s64(timespec64_to_ns(&delta), 1000);
+		} while (delay_us <= 0);
+
+		usleep_range(delay_us, (delay_us * 3) >> 1);
 
 	} while (!kthread_should_stop());
 
