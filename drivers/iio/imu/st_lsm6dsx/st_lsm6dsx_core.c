@@ -44,6 +44,8 @@
 
 #include "st_lsm6dsx.h"
 
+#define ST_LSM6DSX_REG_TIMER_FIFO_ADDR		0x07
+#define ST_LSM6DSX_REG_TIMER_FIFO_MASK		BIT(7)
 #define ST_LSM6DSX_REG_INT1_ADDR		0x0d
 #define ST_LSM6DSX_REG_INT2_ADDR		0x0e
 #define ST_LSM6DSX_REG_FIFO_FTH_IRQ_MASK	BIT(3)
@@ -70,6 +72,9 @@
 #define ST_LSM6DSX_REG_GYRO_OUT_X_L_ADDR	0x22
 #define ST_LSM6DSX_REG_GYRO_OUT_Y_L_ADDR	0x24
 #define ST_LSM6DSX_REG_GYRO_OUT_Z_L_ADDR	0x26
+
+#define ST_LSM6DSX_REG_TIMER_HR_ADDR		0x5c
+#define ST_LSM6DSX_REG_TIMER_HR_MASK		BIT(4)
 
 #define ST_LSM6DSX_ACC_FS_2G_GAIN		IIO_G_TO_M_S_2(61)
 #define ST_LSM6DSX_ACC_FS_4G_GAIN		IIO_G_TO_M_S_2(122)
@@ -181,6 +186,16 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 			},
 			.th_wl = 3, /* 1LSB = 2B */
 		},
+		.ts_settings = {
+			.timer_en = {
+				.addr = 0x58,
+				.mask = BIT(7),
+			},
+			.decimator = {
+				.addr = 0x09,
+				.mask = GENMASK(5, 3),
+			},
+		},
 	},
 	{
 		.wai = 0x69,
@@ -208,6 +223,16 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.mask = GENMASK(11, 0),
 			},
 			.th_wl = 3, /* 1LSB = 2B */
+		},
+		.ts_settings = {
+			.timer_en = {
+				.addr = 0x58,
+				.mask = BIT(7),
+			},
+			.decimator = {
+				.addr = 0x09,
+				.mask = GENMASK(5, 3),
+			},
 		},
 	},
 	{
@@ -237,6 +262,16 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.mask = GENMASK(11, 0),
 			},
 			.th_wl = 3, /* 1LSB = 2B */
+		},
+		.ts_settings = {
+			.timer_en = {
+				.addr = 0x19,
+				.mask = BIT(5),
+			},
+			.decimator = {
+				.addr = 0x09,
+				.mask = GENMASK(5, 3),
+			},
 		},
 	},
 };
@@ -630,6 +665,33 @@ static int st_lsm6dsx_get_drdy_reg(struct st_lsm6dsx_hw *hw, u8 *drdy_reg)
 	return err;
 }
 
+static int st_lsm6dsx_init_hw_timer(struct st_lsm6dsx_hw *hw)
+{
+	const struct st_lsm6dsx_hw_ts_settings *ts_settings;
+	int err, val;
+
+	ts_settings = &hw->settings->ts_settings;
+	/* enable hw timestamp generation */
+	val = ST_LSM6DSX_SHIFT_VAL(1, ts_settings->timer_en.mask);
+	err = regmap_update_bits(hw->regmap, ts_settings->timer_en.addr,
+				 ts_settings->timer_en.mask, val);
+	if (err < 0)
+		return err;
+
+	/* enable high resolution for hw ts timer */
+	err = regmap_update_bits(hw->regmap, ST_LSM6DSX_REG_TIMER_HR_ADDR,
+				 ST_LSM6DSX_REG_TIMER_HR_MASK,
+				 FIELD_PREP(ST_LSM6DSX_REG_TIMER_HR_MASK, 1));
+	if (err < 0)
+		return err;
+
+	return regmap_update_bits(hw->regmap,
+				  ST_LSM6DSX_REG_TIMER_FIFO_ADDR,
+				  ST_LSM6DSX_REG_TIMER_FIFO_MASK,
+				  FIELD_PREP(ST_LSM6DSX_REG_TIMER_FIFO_MASK,
+					     1));
+}
+
 static int st_lsm6dsx_init_device(struct st_lsm6dsx_hw *hw)
 {
 	u8 drdy_int_reg;
@@ -654,10 +716,14 @@ static int st_lsm6dsx_init_device(struct st_lsm6dsx_hw *hw)
 	if (err < 0)
 		return err;
 
-	return regmap_update_bits(hw->regmap, drdy_int_reg,
-				  ST_LSM6DSX_REG_FIFO_FTH_IRQ_MASK,
-				  FIELD_PREP(ST_LSM6DSX_REG_FIFO_FTH_IRQ_MASK,
-					     1));
+	err = regmap_update_bits(hw->regmap, drdy_int_reg,
+				 ST_LSM6DSX_REG_FIFO_FTH_IRQ_MASK,
+				 FIELD_PREP(ST_LSM6DSX_REG_FIFO_FTH_IRQ_MASK,
+					    1));
+	if (err < 0)
+		return err;
+
+	return st_lsm6dsx_init_hw_timer(hw);
 }
 
 static struct iio_dev *st_lsm6dsx_alloc_iiodev(struct st_lsm6dsx_hw *hw,
