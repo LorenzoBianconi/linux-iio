@@ -27,6 +27,7 @@ enum st_lsm6dsx_hw_id {
 	ST_LSM6DSX_MAX_ID,
 };
 
+#define ST_LSM6DSX_BUFF_SIZE		256
 #define ST_LSM6DSX_CHAN_SIZE		2
 #define ST_LSM6DSX_SAMPLE_SIZE		6
 #define ST_LSM6DSX_MAX_WORD_LEN		((32 / ST_LSM6DSX_SAMPLE_SIZE) * \
@@ -122,6 +123,7 @@ struct st_lsm6dsx_sensor {
  * @fifo_mode: FIFO operating mode supported by the device.
  * @enable_mask: Enabled sensor bitmask.
  * @sip: Total number of samples (acc/gyro) in a given pattern.
+ * @buff: Device read buffer.
  * @iio_devs: Pointers to acc/gyro iio_dev instances.
  * @settings: Pointer to the specific sensor settings in use.
  */
@@ -137,6 +139,8 @@ struct st_lsm6dsx_hw {
 	u8 enable_mask;
 	u8 sip;
 
+	u8 *buff;
+
 	struct iio_dev *iio_devs[ST_LSM6DSX_ID_MAX];
 
 	const struct st_lsm6dsx_settings *settings;
@@ -149,8 +153,6 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id, const char *name,
 int st_lsm6dsx_sensor_enable(struct st_lsm6dsx_sensor *sensor);
 int st_lsm6dsx_sensor_disable(struct st_lsm6dsx_sensor *sensor);
 int st_lsm6dsx_fifo_setup(struct st_lsm6dsx_hw *hw);
-int st_lsm6dsx_write_with_mask(struct st_lsm6dsx_hw *hw, u8 addr, u8 mask,
-			       u8 val);
 int st_lsm6dsx_update_watermark(struct st_lsm6dsx_sensor *sensor,
 				u16 watermark);
 int st_lsm6dsx_flush_fifo(struct st_lsm6dsx_hw *hw);
