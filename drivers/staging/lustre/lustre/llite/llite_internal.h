@@ -1070,8 +1070,8 @@ struct ll_statahead_info {
 				sai_agl_valid:1,/* AGL is valid for the dir */
 				sai_in_readpage:1;/* statahead in readdir() */
 	wait_queue_head_t	sai_waitq;      /* stat-ahead wait queue */
-	struct ptlrpc_thread    sai_thread;     /* stat-ahead thread */
-	struct ptlrpc_thread    sai_agl_thread; /* AGL thread */
+	struct task_struct     *sai_task;       /* stat-ahead thread */
+	struct task_struct     *sai_agl_task;   /* AGL thread */
 	struct list_head	sai_interim_entries; /* entries which got async
 						      * stat reply, but not
 						      * instantiated
@@ -1296,15 +1296,7 @@ static inline void d_lustre_invalidate(struct dentry *dentry, int nested)
 	spin_lock_nested(&dentry->d_lock,
 			 nested ? DENTRY_D_LOCK_NESTED : DENTRY_D_LOCK_NORMAL);
 	ll_d2d(dentry)->lld_invalid = 1;
-	/*
-	 * We should be careful about dentries created by d_obtain_alias().
-	 * These dentries are not put in the dentry tree, instead they are
-	 * linked to sb->s_anon through dentry->d_hash.
-	 * shrink_dcache_for_umount() shrinks the tree and sb->s_anon list.
-	 * If we unhashed such a dentry, unmount would not be able to find
-	 * it and busy inodes would be reported.
-	 */
-	if (d_count(dentry) == 0 && !(dentry->d_flags & DCACHE_DISCONNECTED))
+	if (d_count(dentry) == 0)
 		__d_drop(dentry);
 	spin_unlock(&dentry->d_lock);
 }

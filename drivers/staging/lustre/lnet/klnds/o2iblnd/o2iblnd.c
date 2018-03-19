@@ -824,14 +824,15 @@ struct kib_conn *kiblnd_create_conn(struct kib_peer *peer, struct rdma_cm_id *cm
 	return conn;
 
  failed_2:
-	kiblnd_destroy_conn(conn, true);
+	kiblnd_destroy_conn(conn);
+	kfree(conn);
  failed_1:
 	kfree(init_qp_attr);
  failed_0:
 	return NULL;
 }
 
-void kiblnd_destroy_conn(struct kib_conn *conn, bool free_conn)
+void kiblnd_destroy_conn(struct kib_conn *conn)
 {
 	struct rdma_cm_id *cmid = conn->ibc_cmid;
 	struct kib_peer *peer = conn->ibc_peer;
@@ -889,8 +890,6 @@ void kiblnd_destroy_conn(struct kib_conn *conn, bool free_conn)
 		rdma_destroy_id(cmid);
 		atomic_dec(&net->ibn_nconns);
 	}
-
-	kfree(conn);
 }
 
 int kiblnd_close_peer_conns_locked(struct kib_peer *peer, int why)
@@ -1212,7 +1211,7 @@ static struct kib_hca_dev *kiblnd_current_hdev(struct kib_dev *dev)
 			CDEBUG(D_NET, "%s: Wait for failover\n",
 			       dev->ibd_ifname);
 		set_current_state(TASK_INTERRUPTIBLE);
-		schedule_timeout(cfs_time_seconds(1) / 100);
+		schedule_timeout(HZ / 100);
 
 		read_lock_irqsave(&kiblnd_data.kib_global_lock, flags);
 	}
@@ -1922,7 +1921,7 @@ struct list_head *kiblnd_pool_alloc_node(struct kib_poolset *ps)
 
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(interval);
-		if (interval < cfs_time_seconds(1))
+		if (interval < HZ)
 			interval *= 2;
 
 		goto again;
@@ -2542,7 +2541,7 @@ static void kiblnd_base_shutdown(void)
 			       "Waiting for %d threads to terminate\n",
 			       atomic_read(&kiblnd_data.kib_nthreads));
 			set_current_state(TASK_UNINTERRUPTIBLE);
-			schedule_timeout(cfs_time_seconds(1));
+			schedule_timeout(HZ);
 		}
 
 		/* fall through */
@@ -2593,7 +2592,7 @@ static void kiblnd_shutdown(struct lnet_ni *ni)
 			       libcfs_nid2str(ni->ni_nid),
 			       atomic_read(&net->ibn_npeers));
 			set_current_state(TASK_UNINTERRUPTIBLE);
-			schedule_timeout(cfs_time_seconds(1));
+			schedule_timeout(HZ);
 		}
 
 		kiblnd_net_fini_pools(net);

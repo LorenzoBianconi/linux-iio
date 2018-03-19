@@ -120,7 +120,7 @@ config QCOM_EBI2
 	  SRAM, ethernet adapters, FPGAs and LCD displays.
 
 config SIMPLE_PM_BUS
-	bool "Simple Power-Managed Bus Driver"
+	tristate "Simple Power-Managed Bus Driver"
 	depends on OF && PM
 	help
 	  Driver for transparent busses that don't need a real driver, but
@@ -198,5 +198,7 @@ config DA8XX_MSTPRI
 	  Driver for Texas Instruments da8xx master peripheral priority
 	  configuration. Allows to adjust the priorities of all master
 	  peripherals.
+
+source "drivers/bus/fsl-mc/Kconfig"
 
 endmenu

@@ -3288,8 +3288,6 @@ kiblnd_connd(void *arg)
 	int peer_index = 0;
 	unsigned long deadline = jiffies;
 
-	cfs_block_allsigs();
-
 	init_waitqueue_entry(&wait, current);
 	kiblnd_data.kib_connd = current;
 
@@ -3314,11 +3312,13 @@ kiblnd_connd(void *arg)
 			spin_unlock_irqrestore(lock, flags);
 			dropped_lock = 1;
 
-			kiblnd_destroy_conn(conn, !peer);
+			kiblnd_destroy_conn(conn);
 
 			spin_lock_irqsave(lock, flags);
-			if (!peer)
+			if (!peer) {
+				kfree(conn);
 				continue;
+			}
 
 			conn->ibc_peer = peer;
 			if (peer->ibp_reconnected < KIB_RECONN_HIGH_RACE)
@@ -3540,8 +3540,6 @@ kiblnd_scheduler(void *arg)
 	int busy_loops = 0;
 	int rc;
 
-	cfs_block_allsigs();
-
 	init_waitqueue_entry(&wait, current);
 
 	sched = kiblnd_data.kib_scheds[KIB_THREAD_CPT(id)];
@@ -3674,8 +3672,6 @@ kiblnd_failover_thread(void *arg)
 
 	LASSERT(*kiblnd_tunables.kib_dev_failover);
 
-	cfs_block_allsigs();
-
 	init_waitqueue_entry(&wait, current);
 	write_lock_irqsave(glock, flags);
 
@@ -3726,8 +3722,8 @@ kiblnd_failover_thread(void *arg)
 		add_wait_queue(&kiblnd_data.kib_failover_waitq, &wait);
 		write_unlock_irqrestore(glock, flags);
 
-		rc = schedule_timeout(long_sleep ? cfs_time_seconds(10) :
-						   cfs_time_seconds(1));
+		rc = schedule_timeout(long_sleep ? 10 * HZ :
+						   HZ);
 		remove_wait_queue(&kiblnd_data.kib_failover_waitq, &wait);
 		write_lock_irqsave(glock, flags);
 
