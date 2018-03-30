@@ -111,11 +111,11 @@ static void serial2002_tty_read_poll_wait(struct file *f, int timeout)
 	poll_initwait(&table);
 	while (1) {
 		long elapsed;
-		int mask;
+		__poll_t mask;
 
 		mask = f->f_op->poll(f, &table.pt);
-		if (mask & (POLLRDNORM | POLLRDBAND | POLLIN |
-			    POLLHUP | POLLERR)) {
+		if (mask & (EPOLLRDNORM | EPOLLRDBAND | EPOLLIN |
+			    EPOLLHUP | EPOLLERR)) {
 			break;
 		}
 		now = ktime_get();

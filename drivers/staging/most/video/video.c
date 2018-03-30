@@ -203,17 +203,17 @@ static ssize_t comp_vdev_read(struct file *filp, char __user *buf,
 	return ret;
 }
 
-static unsigned int comp_vdev_poll(struct file *filp, poll_table *wait)
+static __poll_t comp_vdev_poll(struct file *filp, poll_table *wait)
 {
 	struct comp_fh *fh = filp->private_data;
 	struct most_video_dev *mdev = fh->mdev;
-	unsigned int mask = 0;
+	__poll_t mask = 0;
 
 	/* only wait if no data is available */
 	if (!data_ready(mdev))
 		poll_wait(filp, &mdev->wait_data, wait);
 	if (data_ready(mdev))
-		mask |= POLLIN | POLLRDNORM;
+		mask |= EPOLLIN | EPOLLRDNORM;
 
 	return mask;
 }

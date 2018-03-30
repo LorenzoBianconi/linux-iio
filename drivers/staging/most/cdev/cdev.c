@@ -283,19 +283,19 @@ comp_read(struct file *filp, char __user *buf, size_t count, loff_t *offset)
 	return copied;
 }
 
-static unsigned int comp_poll(struct file *filp, poll_table *wait)
+static __poll_t comp_poll(struct file *filp, poll_table *wait)
 {
 	struct comp_channel *c = filp->private_data;
-	unsigned int mask = 0;
+	__poll_t mask = 0;
 
 	poll_wait(filp, &c->wq, wait);
 
 	if (c->cfg->direction == MOST_CH_RX) {
 		if (!kfifo_is_empty(&c->fifo))
-			mask |= POLLIN | POLLRDNORM;
+			mask |= EPOLLIN | EPOLLRDNORM;
 	} else {
 		if (!kfifo_is_empty(&c->fifo) || ch_has_mbo(c))
-			mask |= POLLOUT | POLLWRNORM;
+			mask |= EPOLLOUT | EPOLLWRNORM;
 	}
 	return mask;
 }

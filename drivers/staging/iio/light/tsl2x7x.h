@@ -21,7 +21,6 @@
 
 #ifndef __TSL2X7X_H
 #define __TSL2X7X_H
-#include <linux/pm.h>
 
 struct tsl2x7x_lux {
 	unsigned int ratio;
@@ -51,12 +50,14 @@ struct tsl2x7x_lux {
  *  @prox_config:           Prox configuration filters.
  *  @als_cal_target:        Known external ALS reading for
  *                          calibration.
- *  @interrupts_en:         Enable/Disable - 0x00 = none, 0x10 = als,
- *                                           0x20 = prx,  0x30 = bth
- *  @persistence:           H/W Filters, Number of 'out of limits'
- *                          ADC readings PRX/ALS.
+ *  @als_persistence:       H/W Filters, Number of 'out of limits'
+ *                          ALS readings.
+ *  @als_interrupt_en:      Enable/Disable ALS interrupts
  *  @als_thresh_low:        CH0 'low' count to trigger interrupt.
  *  @als_thresh_high:       CH0 'high' count to trigger interrupt.
+ *  @prox_persistence:      H/W Filters, Number of 'out of limits'
+ *                          proximity readings.
+ *  @prox_interrupt_en:     Enable/Disable proximity interrupts
  *  @prox_thres_low:        Low threshold proximity detection.
  *  @prox_thres_high:       High threshold proximity detection
  *  @prox_pulse_count:      Number if proximity emitter pulses
@@ -71,14 +72,18 @@ struct tsl2x7x_settings {
 	int prox_gain;
 	int prox_config;
 	int als_cal_target;
-	u8  interrupts_en;
-	u8  persistence;
+	u8 als_persistence;
+	bool als_interrupt_en;
 	int als_thresh_low;
 	int als_thresh_high;
+	u8 prox_persistence;
+	bool prox_interrupt_en;
 	int prox_thres_low;
 	int prox_thres_high;
 	int prox_pulse_count;
 	int prox_max_samples_cal;
+	int prox_diode;
+	int prox_power;
 };
 
 /**
@@ -91,9 +96,6 @@ struct tsl2x7x_settings {
  *
  */
 struct tsl2X7X_platform_data {
-	int (*platform_power)(struct device *dev, pm_message_t);
-	int (*power_on)(struct iio_dev *indio_dev);
-	int (*power_off)(struct i2c_client *dev);
 	struct tsl2x7x_lux platform_lux_table[TSL2X7X_MAX_LUX_TABLE_SIZE];
 	struct tsl2x7x_settings *platform_default_settings;
 };
