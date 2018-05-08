@@ -49,11 +49,14 @@ static int inv_mpu6050_set_enable(struct iio_dev *indio_dev, bool enable)
 		if (result)
 			return result;
 		inv_scan_query(indio_dev);
+		st->skip_samples = 0;
 		if (st->chip_config.gyro_fifo_enable) {
 			result = inv_mpu6050_switch_engine(st, true,
 					INV_MPU6050_BIT_PWR_GYRO_STBY);
 			if (result)
 				goto error_power_off;
+			/* gyro first sample is out of specs, skip it */
+			st->skip_samples = 1;
 		}
 		if (st->chip_config.accl_fifo_enable) {
 			result = inv_mpu6050_switch_engine(st, true,
@@ -73,7 +76,8 @@ static int inv_mpu6050_set_enable(struct iio_dev *indio_dev, bool enable)
 		if (result)
 			goto error_accl_off;
 
-		result = regmap_write(st->map, st->reg->user_ctrl, 0);
+		result = regmap_write(st->map, st->reg->user_ctrl,
+				      st->chip_config.user_ctrl);
 		if (result)
 			goto error_accl_off;
 

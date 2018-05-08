@@ -1,19 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Device driver for monitoring ambient light intensity in (lux) and proximity
  * detection (prox) within the TAOS TSL2X7X family of devices.
  *
  * Copyright (c) 2012, TAOS Corporation.
  * Copyright (c) 2017-2018 Brian Masney <masneyb@onstation.org>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
  */
 
 #include <linux/delay.h>
@@ -143,8 +134,9 @@ struct tsl2x7x_als_info {
 
 struct tsl2x7x_chip_info {
 	int chan_table_elements;
-	struct iio_chan_spec		channel[4];
-	const struct iio_info		*info;
+	struct iio_chan_spec channel_with_events[4];
+	struct iio_chan_spec channel_without_events[4];
+	const struct iio_info *info;
 };
 
 struct tsl2X7X_chip {
@@ -156,7 +148,7 @@ struct tsl2X7X_chip {
 	struct tsl2x7x_als_info als_cur_info;
 	struct tsl2x7x_settings settings;
 	struct tsl2X7X_platform_data *pdata;
-	int als_time_scale;
+	int als_gain_time_scale;
 	int als_saturation;
 	int tsl2x7x_chip_status;
 	u8 tsl2x7x_config[TSL2X7X_MAX_CONFIG_REG];
@@ -171,29 +163,36 @@ struct tsl2X7X_chip {
 	struct tsl2x7x_lux tsl2x7x_device_lux[TSL2X7X_MAX_LUX_TABLE_SIZE];
 };
 
-/* Different devices require different coefficents */
+/*
+ * Different devices require different coefficents, and these numbers were
+ * derived from the 'Lux Equation' section of the various device datasheets.
+ * All of these coefficients assume a Glass Attenuation (GA) factor of 1.
+ * The coefficients are multiplied by 1000 to avoid floating point operations.
+ * The two rows in each table correspond to the Lux1 and Lux2 equations from
+ * the datasheets.
+ */
 static const struct tsl2x7x_lux tsl2x71_lux_table[TSL2X7X_DEF_LUX_TABLE_SZ] = {
-	{ 14461,   611,   1211 },
-	{ 18540,   352,    623 },
-	{     0,     0,      0 },
+	{ 53000, 106000 },
+	{ 31800,  53000 },
+	{ 0,          0 },
 };
 
 static const struct tsl2x7x_lux tmd2x71_lux_table[TSL2X7X_DEF_LUX_TABLE_SZ] = {
-	{ 11635,   115,    256 },
-	{ 15536,    87,    179 },
-	{     0,     0,      0 },
+	{ 24000,  48000 },
+	{ 14400,  24000 },
+	{ 0,          0 },
 };
 
 static const struct tsl2x7x_lux tsl2x72_lux_table[TSL2X7X_DEF_LUX_TABLE_SZ] = {
-	{ 14013,   466,   917 },
-	{ 18222,   310,   552 },
-	{     0,     0,     0 },
+	{ 60000, 112200 },
+	{ 37800,  60000 },
+	{     0,      0 },
 };
 
 static const struct tsl2x7x_lux tmd2x72_lux_table[TSL2X7X_DEF_LUX_TABLE_SZ] = {
-	{ 13218,   130,   262 },
-	{ 17592,   92,    169 },
-	{     0,     0,     0 },
+	{ 20000,  35000 },
+	{ 12600,  20000 },
+	{     0,      0 },
 };
 
 static const struct tsl2x7x_lux *tsl2x7x_default_lux_table_group[] = {
@@ -256,16 +255,16 @@ enum {
 };
 
 static const u8 device_channel_config[] = {
-	ALS,
-	PRX,
-	PRX,
-	ALSPRX,
-	ALSPRX,
-	ALS,
-	PRX2,
-	PRX2,
-	ALSPRX2,
-	ALSPRX2
+	[tsl2571] = ALS,
+	[tsl2671] = PRX,
+	[tmd2671] = PRX,
+	[tsl2771] = ALSPRX,
+	[tmd2771] = ALSPRX,
+	[tsl2572] = ALS,
+	[tsl2672] = PRX2,
+	[tmd2672] = PRX2,
+	[tsl2772] = ALSPRX2,
+	[tmd2772] = ALSPRX2
 };
 
 static int tsl2x7x_read_status(struct tsl2X7X_chip *chip)
@@ -351,22 +350,18 @@ static int tsl2x7x_read_autoinc_regs(struct tsl2X7X_chip *chip, int lower_reg,
  * @indio_dev:	pointer to IIO device
  *
  * The raw ch0 and ch1 values of the ambient light sensed in the last
- * integration cycle are read from the device. Time scale factor array values
- * are adjusted based on the integration time. The raw values are multiplied
- * by a scale factor, and device gain is obtained using gain index. Limit
- * checks are done next, then the ratio of a multiple of ch1 value, to the
- * ch0 value, is calculated. Array tsl2x7x_device_lux[] is then scanned to
- * find the first ratio value that is just above the ratio we just calculated.
- * The ch0 and ch1 multiplier constants in the array are then used along with
- * the time scale factor array values, to calculate the lux.
+ * integration cycle are read from the device. The raw values are multiplied
+ * by a device-specific scale factor, and divided by the integration time and
+ * device gain. The code supports multiple lux equations through the lux table
+ * coefficients. A lux gain trim is applied to each lux equation, and then the
+ * maximum lux within the interval 0..65535 is selected.
  */
 static int tsl2x7x_get_lux(struct iio_dev *indio_dev)
 {
 	struct tsl2X7X_chip *chip = iio_priv(indio_dev);
 	struct tsl2x7x_lux *p;
-	u32 lux, ratio;
-	u64 lux64;
-	int ret;
+	int max_lux, ret;
+	bool overflow;
 
 	mutex_lock(&chip->als_mutex);
 
@@ -400,10 +395,9 @@ static int tsl2x7x_get_lux(struct iio_dev *indio_dev)
 		goto out_unlock;
 	chip->als_cur_info.als_ch1 = ret;
 
-	if (chip->als_cur_info.als_ch0 >= chip->als_saturation ||
-	    chip->als_cur_info.als_ch1 >= chip->als_saturation) {
-		lux = TSL2X7X_LUX_CALC_OVER_FLOW;
-		goto return_max;
+	if (chip->als_cur_info.als_ch0 >= chip->als_saturation) {
+		max_lux = TSL2X7X_LUX_CALC_OVER_FLOW;
+		goto update_struct_with_max_lux;
 	}
 
 	if (!chip->als_cur_info.als_ch0) {
@@ -412,51 +406,38 @@ static int tsl2x7x_get_lux(struct iio_dev *indio_dev)
 		goto out_unlock;
 	}
 
-	/* calculate ratio */
-	ratio = (chip->als_cur_info.als_ch1 << 15) / chip->als_cur_info.als_ch0;
+	max_lux = 0;
+	overflow = false;
+	for (p = (struct tsl2x7x_lux *)chip->tsl2x7x_device_lux; p->ch0 != 0;
+	     p++) {
+		int lux;
 
-	/* convert to unscaled lux using the pointer to the table */
-	p = (struct tsl2x7x_lux *)chip->tsl2x7x_device_lux;
-	while (p->ratio != 0 && p->ratio < ratio)
-		p++;
+		lux = ((chip->als_cur_info.als_ch0 * p->ch0) -
+		       (chip->als_cur_info.als_ch1 * p->ch1)) /
+			chip->als_gain_time_scale;
 
-	if (p->ratio == 0) {
-		lux = 0;
-	} else {
-		lux = DIV_ROUND_UP(chip->als_cur_info.als_ch0 * p->ch0,
-				   tsl2x7x_als_gain[chip->settings.als_gain]) -
-		      DIV_ROUND_UP(chip->als_cur_info.als_ch1 * p->ch1,
-				   tsl2x7x_als_gain[chip->settings.als_gain]);
+		/*
+		 * The als_gain_trim can have a value within the range 250..4000
+		 * and is a multiplier for the lux. A trim of 1000 makes no
+		 * changes to the lux, less than 1000 scales it down, and
+		 * greater than 1000 scales it up.
+		 */
+		lux = (lux * chip->settings.als_gain_trim) / 1000;
+
+		if (lux > TSL2X7X_LUX_CALC_OVER_FLOW) {
+			overflow = true;
+			continue;
+		}
+
+		max_lux = max(max_lux, lux);
 	}
 
-	/* adjust for active time scale */
-	if (chip->als_time_scale == 0)
-		lux = 0;
-	else
-		lux = (lux + (chip->als_time_scale >> 1)) /
-			chip->als_time_scale;
+	if (overflow && max_lux == 0)
+		max_lux = TSL2X7X_LUX_CALC_OVER_FLOW;
 
-	/*
-	 * adjust for active gain scale. The tsl2x7x_device_lux tables have a
-	 * factor of 256 built-in. User-specified gain provides a multiplier.
-	 * Apply user-specified gain before shifting right to retain precision.
-	 * Use 64 bits to avoid overflow on multiplication. Then go back to
-	 * 32 bits before division to avoid using div_u64().
-	 */
-
-	lux64 = lux;
-	lux64 = lux64 * chip->settings.als_gain_trim;
-	lux64 >>= 8;
-	lux = lux64;
-	lux = (lux + 500) / 1000;
-
-	if (lux > TSL2X7X_LUX_CALC_OVER_FLOW) /* check for overflow */
-		lux = TSL2X7X_LUX_CALC_OVER_FLOW;
-
-	/* Update the structure with the latest lux. */
-return_max:
-	chip->als_cur_info.lux = lux;
-	ret = lux;
+update_struct_with_max_lux:
+	chip->als_cur_info.lux = max_lux;
+	ret = max_lux;
 
 out_unlock:
 	mutex_unlock(&chip->als_mutex);
@@ -533,7 +514,7 @@ static void tsl2x7x_defaults(struct tsl2X7X_chip *chip)
 		       sizeof(tsl2x7x_default_settings));
 
 	/* Load up the proper lux table. */
-	if (chip->pdata && chip->pdata->platform_lux_table[0].ratio != 0)
+	if (chip->pdata && chip->pdata->platform_lux_table[0].ch0 != 0)
 		memcpy(chip->tsl2x7x_device_lux,
 		       chip->pdata->platform_lux_table,
 		       sizeof(chip->pdata->platform_lux_table));
@@ -596,10 +577,11 @@ static int tsl2x7x_als_calibrate(struct iio_dev *indio_dev)
 static int tsl2x7x_chip_on(struct iio_dev *indio_dev)
 {
 	struct tsl2X7X_chip *chip = iio_priv(indio_dev);
-	int ret, i, als_count, als_time;
+	int ret, i, als_count, als_time_us;
 	u8 *dev_reg, reg_val;
 
 	/* Non calculated parameters */
+	chip->tsl2x7x_config[TSL2X7X_ALS_TIME] = chip->settings.als_time;
 	chip->tsl2x7x_config[TSL2X7X_PRX_TIME] = chip->settings.prox_time;
 	chip->tsl2x7x_config[TSL2X7X_WAIT_TIME] = chip->settings.wait_time;
 	chip->tsl2x7x_config[TSL2X7X_ALS_PRX_CONFIG] =
@@ -635,15 +617,6 @@ static int tsl2x7x_chip_on(struct iio_dev *indio_dev)
 		return -EINVAL;
 	}
 
-	/* determine als integration register */
-	als_count = (chip->settings.als_time * 100 + 135) / 270;
-	if (!als_count)
-		als_count = 1; /* ensure at least one cycle */
-
-	/* convert back to time (encompasses overrides) */
-	als_time = (als_count * 27 + 5) / 10;
-	chip->tsl2x7x_config[TSL2X7X_ALS_TIME] = 256 - als_count;
-
 	/* Set the gain based on tsl2x7x_settings struct */
 	chip->tsl2x7x_config[TSL2X7X_GAIN] =
 		(chip->settings.als_gain & 0xFF) |
@@ -651,9 +624,12 @@ static int tsl2x7x_chip_on(struct iio_dev *indio_dev)
 		(chip->settings.prox_diode << 4) |
 		(chip->settings.prox_power << 6);
 
-	/* set chip struct re scaling and saturation */
-	chip->als_saturation = als_count * 922; /* 90% of full scale */
-	chip->als_time_scale = (als_time + 25) / 50;
+	/* set chip time scaling and saturation */
+	als_count = 256 - chip->settings.als_time;
+	als_time_us = als_count * 2720;
+	chip->als_saturation = als_count * 768; /* 75% of full scale */
+	chip->als_gain_time_scale = als_time_us *
+		tsl2x7x_als_gain[chip->settings.als_gain];
 
 	/*
 	 * TSL2X7X Specific power-on / adc enable sequence
@@ -784,24 +760,7 @@ static int tsl2x7x_prox_cal(struct iio_dev *indio_dev)
 	return tsl2x7x_invoke_change(indio_dev);
 }
 
-static ssize_t
-in_illuminance0_calibscale_available_show(struct device *dev,
-					  struct device_attribute *attr,
-					  char *buf)
-{
-	struct tsl2X7X_chip *chip = iio_priv(dev_to_iio_dev(dev));
-
-	switch (chip->id) {
-	case tsl2571:
-	case tsl2671:
-	case tmd2671:
-	case tsl2771:
-	case tmd2771:
-		return snprintf(buf, PAGE_SIZE, "%s\n", "1 8 16 128");
-	}
-
-	return snprintf(buf, PAGE_SIZE, "%s\n", "1 8 16 120");
-}
+static IIO_CONST_ATTR(in_intensity0_calibscale_available, "1 8 16 120");
 
 static IIO_CONST_ATTR(in_proximity0_calibscale_available, "1 2 4 8");
 
@@ -823,15 +782,13 @@ static ssize_t in_illuminance0_target_input_store(struct device *dev,
 {
 	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
 	struct tsl2X7X_chip *chip = iio_priv(indio_dev);
-	unsigned long value;
+	u16 value;
 	int ret;
 
-	if (kstrtoul(buf, 0, &value))
+	if (kstrtou16(buf, 0, &value))
 		return -EINVAL;
 
-	if (value)
-		chip->settings.als_cal_target = value;
-
+	chip->settings.als_cal_target = value;
 	ret = tsl2x7x_invoke_change(indio_dev);
 	if (ret < 0)
 		return ret;
@@ -847,14 +804,12 @@ static ssize_t in_illuminance0_calibrate_store(struct device *dev,
 	bool value;
 	int ret;
 
-	if (strtobool(buf, &value))
+	if (kstrtobool(buf, &value) || !value)
 		return -EINVAL;
 
-	if (value) {
-		ret = tsl2x7x_als_calibrate(indio_dev);
-		if (ret < 0)
-			return ret;
-	}
+	ret = tsl2x7x_als_calibrate(indio_dev);
+	if (ret < 0)
+		return ret;
 
 	ret = tsl2x7x_invoke_change(indio_dev);
 	if (ret < 0)
@@ -872,11 +827,10 @@ static ssize_t in_illuminance0_lux_table_show(struct device *dev,
 	int offset = 0;
 
 	while (i < TSL2X7X_MAX_LUX_TABLE_SIZE) {
-		offset += snprintf(buf + offset, PAGE_SIZE, "%u,%u,%u,",
-			chip->tsl2x7x_device_lux[i].ratio,
+		offset += snprintf(buf + offset, PAGE_SIZE, "%u,%u,",
 			chip->tsl2x7x_device_lux[i].ch0,
 			chip->tsl2x7x_device_lux[i].ch1);
-		if (chip->tsl2x7x_device_lux[i].ratio == 0) {
+		if (chip->tsl2x7x_device_lux[i].ch0 == 0) {
 			/*
 			 * We just printed the first "0" entry.
 			 * Now get rid of the extra "," and break.
@@ -897,7 +851,7 @@ static ssize_t in_illuminance0_lux_table_store(struct device *dev,
 {
 	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
 	struct tsl2X7X_chip *chip = iio_priv(indio_dev);
-	int value[ARRAY_SIZE(chip->tsl2x7x_device_lux) * 3 + 1];
+	int value[ARRAY_SIZE(chip->tsl2x7x_device_lux) * 2 + 1];
 	int n, ret;
 
 	get_options(buf, ARRAY_SIZE(value), value);
@@ -905,15 +859,15 @@ static ssize_t in_illuminance0_lux_table_store(struct device *dev,
 	/*
 	 * We now have an array of ints starting at value[1], and
 	 * enumerated by value[0].
-	 * We expect each group of three ints is one table entry,
+	 * We expect each group of two ints to be one table entry,
 	 * and the last table entry is all 0.
 	 */
 	n = value[0];
-	if ((n % 3) || n < 6 ||
-	    n > ((ARRAY_SIZE(chip->tsl2x7x_device_lux) - 1) * 3))
+	if ((n % 2) || n < 4 ||
+	    n > ((ARRAY_SIZE(chip->tsl2x7x_device_lux) - 1) * 2))
 		return -EINVAL;
 
-	if ((value[(n - 2)] | value[(n - 1)] | value[n]) != 0)
+	if ((value[(n - 1)] | value[n]) != 0)
 		return -EINVAL;
 
 	if (chip->tsl2x7x_chip_status == TSL2X7X_CHIP_WORKING) {
@@ -941,14 +895,12 @@ static ssize_t in_proximity0_calibrate_store(struct device *dev,
 	bool value;
 	int ret;
 
-	if (strtobool(buf, &value))
+	if (kstrtobool(buf, &value) || !value)
 		return -EINVAL;
 
-	if (value) {
-		ret = tsl2x7x_prox_cal(indio_dev);
-		if (ret < 0)
-			return ret;
-	}
+	ret = tsl2x7x_prox_cal(indio_dev);
+	if (ret < 0)
+		return ret;
 
 	ret = tsl2x7x_invoke_change(indio_dev);
 	if (ret < 0)
@@ -1171,8 +1123,8 @@ static int tsl2x7x_read_raw(struct iio_dev *indio_dev,
 		ret = IIO_VAL_INT;
 		break;
 	case IIO_CHAN_INFO_INT_TIME:
-		*val = (TSL2X7X_MAX_TIMER_CNT - chip->settings.als_time) + 1;
-		*val2 = ((*val * TSL2X7X_MIN_ITIME) % 1000) / 1000;
+		*val = 0;
+		*val2 = (256 - chip->settings.als_time) * 2720;
 		ret = IIO_VAL_INT_PLUS_MICRO;
 		break;
 	default:
@@ -1204,25 +1156,6 @@ static int tsl2x7x_write_raw(struct iio_dev *indio_dev,
 				chip->settings.als_gain = 2;
 				break;
 			case 120:
-				switch (chip->id) {
-				case tsl2572:
-				case tsl2672:
-				case tmd2672:
-				case tsl2772:
-				case tmd2772:
-					return -EINVAL;
-				}
-				chip->settings.als_gain = 3;
-				break;
-			case 128:
-				switch (chip->id) {
-				case tsl2571:
-				case tsl2671:
-				case tmd2671:
-				case tsl2771:
-				case tmd2771:
-					return -EINVAL;
-				}
 				chip->settings.als_gain = 3;
 				break;
 			default:
@@ -1251,8 +1184,7 @@ static int tsl2x7x_write_raw(struct iio_dev *indio_dev,
 		chip->settings.als_gain_trim = val;
 		break;
 	case IIO_CHAN_INFO_INT_TIME:
-		chip->settings.als_time =
-			TSL2X7X_MAX_TIMER_CNT - (val2 / TSL2X7X_MIN_ITIME);
+		chip->settings.als_time = 256 - (val2 / 2720);
 		break;
 	default:
 		return -EINVAL;
@@ -1260,8 +1192,6 @@ static int tsl2x7x_write_raw(struct iio_dev *indio_dev,
 
 	return tsl2x7x_invoke_change(indio_dev);
 }
-
-static DEVICE_ATTR_RO(in_illuminance0_calibscale_available);
 
 static DEVICE_ATTR_RW(in_illuminance0_target_input);
 
@@ -1335,9 +1265,8 @@ static irqreturn_t tsl2x7x_event_handler(int irq, void *private)
 }
 
 static struct attribute *tsl2x7x_ALS_device_attrs[] = {
-	&dev_attr_in_illuminance0_calibscale_available.attr,
-	&iio_const_attr_in_intensity0_integration_time_available
-		.dev_attr.attr,
+	&iio_const_attr_in_intensity0_calibscale_available.dev_attr.attr,
+	&iio_const_attr_in_intensity0_integration_time_available.dev_attr.attr,
 	&dev_attr_in_illuminance0_target_input.attr,
 	&dev_attr_in_illuminance0_calibrate.attr,
 	&dev_attr_in_illuminance0_lux_table.attr,
@@ -1350,9 +1279,8 @@ static struct attribute *tsl2x7x_PRX_device_attrs[] = {
 };
 
 static struct attribute *tsl2x7x_ALSPRX_device_attrs[] = {
-	&dev_attr_in_illuminance0_calibscale_available.attr,
-	&iio_const_attr_in_intensity0_integration_time_available
-		.dev_attr.attr,
+	&iio_const_attr_in_intensity0_calibscale_available.dev_attr.attr,
+	&iio_const_attr_in_intensity0_integration_time_available.dev_attr.attr,
 	&dev_attr_in_illuminance0_target_input.attr,
 	&dev_attr_in_illuminance0_calibrate.attr,
 	&dev_attr_in_illuminance0_lux_table.attr,
@@ -1366,9 +1294,8 @@ static struct attribute *tsl2x7x_PRX2_device_attrs[] = {
 };
 
 static struct attribute *tsl2x7x_ALSPRX2_device_attrs[] = {
-	&dev_attr_in_illuminance0_calibscale_available.attr,
-	&iio_const_attr_in_intensity0_integration_time_available
-		.dev_attr.attr,
+	&iio_const_attr_in_intensity0_calibscale_available.dev_attr.attr,
+	&iio_const_attr_in_intensity0_integration_time_available.dev_attr.attr,
 	&dev_attr_in_illuminance0_target_input.attr,
 	&dev_attr_in_illuminance0_calibrate.attr,
 	&dev_attr_in_illuminance0_lux_table.attr,
@@ -1462,7 +1389,7 @@ static const struct iio_event_spec tsl2x7x_events[] = {
 
 static const struct tsl2x7x_chip_info tsl2x7x_chip_info_tbl[] = {
 	[ALS] = {
-		.channel = {
+		.channel_with_events = {
 			{
 			.type = IIO_LIGHT,
 			.indexed = 1,
@@ -1484,11 +1411,31 @@ static const struct tsl2x7x_chip_info tsl2x7x_chip_info_tbl[] = {
 			.channel = 1,
 			},
 		},
-	.chan_table_elements = 3,
-	.info = &tsl2X7X_device_info[ALS],
+		.channel_without_events = {
+			{
+			.type = IIO_LIGHT,
+			.indexed = 1,
+			.channel = 0,
+			.info_mask_separate = BIT(IIO_CHAN_INFO_PROCESSED),
+			}, {
+			.type = IIO_INTENSITY,
+			.indexed = 1,
+			.channel = 0,
+			.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) |
+				BIT(IIO_CHAN_INFO_INT_TIME) |
+				BIT(IIO_CHAN_INFO_CALIBSCALE) |
+				BIT(IIO_CHAN_INFO_CALIBBIAS),
+			}, {
+			.type = IIO_INTENSITY,
+			.indexed = 1,
+			.channel = 1,
+			},
+		},
+		.chan_table_elements = 3,
+		.info = &tsl2X7X_device_info[ALS],
 	},
 	[PRX] = {
-		.channel = {
+		.channel_with_events = {
 			{
 			.type = IIO_PROXIMITY,
 			.indexed = 1,
@@ -1498,11 +1445,19 @@ static const struct tsl2x7x_chip_info tsl2x7x_chip_info_tbl[] = {
 			.num_event_specs = ARRAY_SIZE(tsl2x7x_events),
 			},
 		},
-	.chan_table_elements = 1,
-	.info = &tsl2X7X_device_info[PRX],
+		.channel_without_events = {
+			{
+			.type = IIO_PROXIMITY,
+			.indexed = 1,
+			.channel = 0,
+			.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
+			},
+		},
+		.chan_table_elements = 1,
+		.info = &tsl2X7X_device_info[PRX],
 	},
 	[ALSPRX] = {
-		.channel = {
+		.channel_with_events = {
 			{
 			.type = IIO_LIGHT,
 			.indexed = 1,
@@ -1532,11 +1487,37 @@ static const struct tsl2x7x_chip_info tsl2x7x_chip_info_tbl[] = {
 			.num_event_specs = ARRAY_SIZE(tsl2x7x_events),
 			},
 		},
-	.chan_table_elements = 4,
-	.info = &tsl2X7X_device_info[ALSPRX],
+		.channel_without_events = {
+			{
+			.type = IIO_LIGHT,
+			.indexed = 1,
+			.channel = 0,
+			.info_mask_separate = BIT(IIO_CHAN_INFO_PROCESSED),
+			}, {
+			.type = IIO_INTENSITY,
+			.indexed = 1,
+			.channel = 0,
+			.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) |
+				BIT(IIO_CHAN_INFO_INT_TIME) |
+				BIT(IIO_CHAN_INFO_CALIBSCALE) |
+				BIT(IIO_CHAN_INFO_CALIBBIAS),
+			}, {
+			.type = IIO_INTENSITY,
+			.indexed = 1,
+			.channel = 1,
+			.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
+			}, {
+			.type = IIO_PROXIMITY,
+			.indexed = 1,
+			.channel = 0,
+			.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
+			},
+		},
+		.chan_table_elements = 4,
+		.info = &tsl2X7X_device_info[ALSPRX],
 	},
 	[PRX2] = {
-		.channel = {
+		.channel_with_events = {
 			{
 			.type = IIO_PROXIMITY,
 			.indexed = 1,
@@ -1547,11 +1528,20 @@ static const struct tsl2x7x_chip_info tsl2x7x_chip_info_tbl[] = {
 			.num_event_specs = ARRAY_SIZE(tsl2x7x_events),
 			},
 		},
-	.chan_table_elements = 1,
-	.info = &tsl2X7X_device_info[PRX2],
+		.channel_without_events = {
+			{
+			.type = IIO_PROXIMITY,
+			.indexed = 1,
+			.channel = 0,
+			.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) |
+				BIT(IIO_CHAN_INFO_CALIBSCALE),
+			},
+		},
+		.chan_table_elements = 1,
+		.info = &tsl2X7X_device_info[PRX2],
 	},
 	[ALSPRX2] = {
-		.channel = {
+		.channel_with_events = {
 			{
 			.type = IIO_LIGHT,
 			.indexed = 1,
@@ -1582,8 +1572,35 @@ static const struct tsl2x7x_chip_info tsl2x7x_chip_info_tbl[] = {
 			.num_event_specs = ARRAY_SIZE(tsl2x7x_events),
 			},
 		},
-	.chan_table_elements = 4,
-	.info = &tsl2X7X_device_info[ALSPRX2],
+		.channel_without_events = {
+			{
+			.type = IIO_LIGHT,
+			.indexed = 1,
+			.channel = 0,
+			.info_mask_separate = BIT(IIO_CHAN_INFO_PROCESSED),
+			}, {
+			.type = IIO_INTENSITY,
+			.indexed = 1,
+			.channel = 0,
+			.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) |
+				BIT(IIO_CHAN_INFO_INT_TIME) |
+				BIT(IIO_CHAN_INFO_CALIBSCALE) |
+				BIT(IIO_CHAN_INFO_CALIBBIAS),
+			}, {
+			.type = IIO_INTENSITY,
+			.indexed = 1,
+			.channel = 1,
+			.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
+			}, {
+			.type = IIO_PROXIMITY,
+			.indexed = 1,
+			.channel = 0,
+			.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) |
+				BIT(IIO_CHAN_INFO_CALIBSCALE),
+			},
+		},
+		.chan_table_elements = 4,
+		.info = &tsl2X7X_device_info[ALSPRX2],
 	},
 };
 
@@ -1635,10 +1652,11 @@ static int tsl2x7x_probe(struct i2c_client *clientp,
 	indio_dev->dev.parent = &clientp->dev;
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->name = chip->client->name;
-	indio_dev->channels = chip->chip_info->channel;
 	indio_dev->num_channels = chip->chip_info->chan_table_elements;
 
 	if (clientp->irq) {
+		indio_dev->channels = chip->chip_info->channel_with_events;
+
 		ret = devm_request_threaded_irq(&clientp->dev, clientp->irq,
 						NULL,
 						&tsl2x7x_event_handler,
@@ -1651,6 +1669,8 @@ static int tsl2x7x_probe(struct i2c_client *clientp,
 				"%s: irq request failed\n", __func__);
 			return ret;
 		}
+	} else {
+		indio_dev->channels = chip->chip_info->channel_without_events;
 	}
 
 	tsl2x7x_defaults(chip);

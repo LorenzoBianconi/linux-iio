@@ -97,6 +97,7 @@ struct inv_mpu6050_chip_config {
 	unsigned int accl_fifo_enable:1;
 	unsigned int gyro_fifo_enable:1;
 	u16 fifo_rate;
+	u8 user_ctrl;
 };
 
 /**
@@ -148,6 +149,7 @@ struct inv_mpu6050_state {
 	struct regmap *map;
 	int irq;
 	u8 irq_mask;
+	unsigned skip_samples;
 };
 
 /*register and associated bit definition*/
