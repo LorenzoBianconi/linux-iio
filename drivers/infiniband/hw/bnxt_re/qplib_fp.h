@@ -389,6 +389,18 @@ struct bnxt_qplib_cq {
 	struct list_head		sqf_head, rqf_head;
 	atomic_t			arm_state;
 	spinlock_t			compl_lock; /* synch CQ handlers */
+/* Locking Notes:
+ * QP can move to error state from modify_qp, async error event or error
+ * CQE as part of poll_cq. When QP is moved to error state, it gets added
+ * to two flush lists, one each for SQ and RQ.
+ * Each flush list is protected by qplib_cq->flush_lock. Both scq and rcq
+ * flush_locks should be acquired when QP is moved to error. The control path
+ * operations(modify_qp and async error events) are synchronized with poll_cq
+ * using upper level CQ locks (bnxt_re_cq->cq_lock) of both SCQ and RCQ.
+ * The qplib_cq->flush_lock is required to synchronize two instances of poll_cq
+ * of the same QP while manipulating the flush list.
+ */
+	spinlock_t			flush_lock; /* QP flush management */
 };
 
 #define BNXT_QPLIB_MAX_IRRQE_ENTRY_SIZE	sizeof(struct xrrq_irrq)
@@ -455,7 +467,10 @@ struct bnxt_qplib_nq_work {
 	struct bnxt_qplib_cq    *cq;
 };
 
+void bnxt_qplib_nq_stop_irq(struct bnxt_qplib_nq *nq, bool kill);
 void bnxt_qplib_disable_nq(struct bnxt_qplib_nq *nq);
+int bnxt_qplib_nq_start_irq(struct bnxt_qplib_nq *nq, int nq_indx,
+			    int msix_vector, bool need_init);
 int bnxt_qplib_enable_nq(struct pci_dev *pdev, struct bnxt_qplib_nq *nq,
 			 int nq_idx, int msix_vector, int bar_reg_offset,
 			 int (*cqn_handler)(struct bnxt_qplib_nq *nq,

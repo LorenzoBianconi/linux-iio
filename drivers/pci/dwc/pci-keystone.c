@@ -89,7 +89,7 @@ static int ks_pcie_establish_link(struct keystone_pcie *ks_pcie)
 	dw_pcie_setup_rc(pp);
 
 	if (dw_pcie_link_up(pci)) {
-		dev_err(dev, "Link already up\n");
+		dev_info(dev, "Link already up\n");
 		return 0;
 	}
 
@@ -297,6 +297,7 @@ static const struct dw_pcie_host_ops keystone_pcie_host_ops = {
 	.msi_clear_irq = ks_dw_pcie_msi_clear_irq,
 	.get_msi_addr = ks_dw_pcie_get_msi_addr,
 	.msi_host_init = ks_dw_pcie_msi_host_init,
+	.msi_irq_ack = ks_dw_pcie_msi_irq_ack,
 	.scan_bus = ks_dw_pcie_v3_65_scan_bus,
 };
 

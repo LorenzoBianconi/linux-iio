@@ -33,6 +33,8 @@
 #include <linux/regmap.h>
 #include <linux/clk.h>
 
+#include "../pci.h"
+
 #define V3_PCI_VENDOR			0x00000000
 #define V3_PCI_DEVICE			0x00000002
 #define V3_PCI_CMD			0x00000004
@@ -673,7 +675,7 @@ static int v3_get_dma_range_config(struct v3_pci *v3,
 		dev_err(v3->dev, "illegal dma memory chunk size\n");
 		return -EINVAL;
 		break;
-	};
+	}
 	val |= V3_PCI_MAP_M_REG_EN | V3_PCI_MAP_M_ENABLE;
 	*pci_map = val;
 
@@ -791,7 +793,8 @@ static int v3_pci_probe(struct platform_device *pdev)
 	if (IS_ERR(v3->config_base))
 		return PTR_ERR(v3->config_base);
 
-	ret = of_pci_get_host_bridge_resources(np, 0, 0xff, &res, &io_base);
+	ret = devm_of_pci_get_host_bridge_resources(dev, 0, 0xff, &res,
+						    &io_base);
 	if (ret)
 		return ret;
 

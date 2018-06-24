@@ -186,13 +186,13 @@ static inline float hist_entry__get_percent_limit(struct hist_entry *he)
 static inline u64 cl_address(u64 address)
 {
 	/* return the cacheline of the address */
-	return (address & ~(cacheline_size - 1));
+	return (address & ~(cacheline_size() - 1));
 }
 
 static inline u64 cl_offset(u64 address)
 {
 	/* return the cacheline of the address */
-	return (address & (cacheline_size - 1));
+	return (address & (cacheline_size() - 1));
 }
 
 enum sort_mode {
@@ -220,6 +220,7 @@ enum sort_type {
 	SORT_TRANSACTION,
 	SORT_TRACE,
 	SORT_SYM_SIZE,
+	SORT_DSO_SIZE,
 	SORT_CGROUP_ID,
 
 	/* branch stack specific sort keys */

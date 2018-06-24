@@ -88,8 +88,25 @@ xfs_refcount_lookup_ge(
 	return xfs_btree_lookup(cur, XFS_LOOKUP_GE, stat);
 }
 
+/*
+ * Look up the first record equal to [bno, len] in the btree
+ * given by cur.
+ */
+int
+xfs_refcount_lookup_eq(
+	struct xfs_btree_cur	*cur,
+	xfs_agblock_t		bno,
+	int			*stat)
+{
+	trace_xfs_refcount_lookup(cur->bc_mp, cur->bc_private.a.agno, bno,
+			XFS_LOOKUP_LE);
+	cur->bc_rec.rc.rc_startblock = bno;
+	cur->bc_rec.rc.rc_blockcount = 0;
+	return xfs_btree_lookup(cur, XFS_LOOKUP_EQ, stat);
+}
+
 /* Convert on-disk record to in-core format. */
-static inline void
+void
 xfs_refcount_btrec_to_irec(
 	union xfs_btree_rec		*rec,
 	struct xfs_refcount_irec	*irec)
@@ -149,7 +166,7 @@ xfs_refcount_update(
  * by [bno, len, refcount].
  * This either works (return 0) or gets an EFSCORRUPTED error.
  */
-STATIC int
+int
 xfs_refcount_insert(
 	struct xfs_btree_cur		*cur,
 	struct xfs_refcount_irec	*irec,
@@ -162,7 +179,10 @@ xfs_refcount_insert(
 	cur->bc_rec.rc.rc_blockcount = irec->rc_blockcount;
 	cur->bc_rec.rc.rc_refcount = irec->rc_refcount;
 	error = xfs_btree_insert(cur, i);
+	if (error)
+		goto out_error;
 	XFS_WANT_CORRUPTED_GOTO(cur->bc_mp, *i == 1, out_error);
+
 out_error:
 	if (error)
 		trace_xfs_refcount_insert_error(cur->bc_mp,
@@ -351,7 +371,6 @@ xfs_refcount_merge_center_extents(
 	struct xfs_refcount_irec	*center,
 	struct xfs_refcount_irec	*right,
 	unsigned long long		extlen,
-	xfs_agblock_t			*agbno,
 	xfs_extlen_t			*aglen)
 {
 	int				error;
@@ -471,7 +490,6 @@ xfs_refcount_merge_right_extent(
 	struct xfs_btree_cur		*cur,
 	struct xfs_refcount_irec	*right,
 	struct xfs_refcount_irec	*cright,
-	xfs_agblock_t			*agbno,
 	xfs_extlen_t			*aglen)
 {
 	int				error;
@@ -749,7 +767,7 @@ xfs_refcount_merge_extents(
 	    ulen < MAXREFCEXTLEN) {
 		*shape_changed = true;
 		return xfs_refcount_merge_center_extents(cur, &left, &cleft,
-				&right, ulen, agbno, aglen);
+				&right, ulen, aglen);
 	}
 
 	/* Try to merge left and cleft. */
@@ -778,7 +796,7 @@ xfs_refcount_merge_extents(
 	    ulen < MAXREFCEXTLEN) {
 		*shape_changed = true;
 		return xfs_refcount_merge_right_extent(cur, &right, &cright,
-				agbno, aglen);
+				aglen);
 	}
 
 	return error;
@@ -1356,9 +1374,7 @@ xfs_refcount_adjust_cow_extents(
 	struct xfs_btree_cur	*cur,
 	xfs_agblock_t		agbno,
 	xfs_extlen_t		aglen,
-	enum xfs_refc_adjust_op	adj,
-	struct xfs_defer_ops	*dfops,
-	struct xfs_owner_info	*oinfo)
+	enum xfs_refc_adjust_op	adj)
 {
 	struct xfs_refcount_irec	ext, tmp;
 	int				error;
@@ -1437,8 +1453,7 @@ xfs_refcount_adjust_cow(
 	struct xfs_btree_cur	*cur,
 	xfs_agblock_t		agbno,
 	xfs_extlen_t		aglen,
-	enum xfs_refc_adjust_op	adj,
-	struct xfs_defer_ops	*dfops)
+	enum xfs_refc_adjust_op	adj)
 {
 	bool			shape_changed;
 	int			error;
@@ -1465,8 +1480,7 @@ xfs_refcount_adjust_cow(
 		goto out_error;
 
 	/* Now that we've taken care of the ends, adjust the middle extents */
-	error = xfs_refcount_adjust_cow_extents(cur, agbno, aglen, adj,
-			dfops, NULL);
+	error = xfs_refcount_adjust_cow_extents(cur, agbno, aglen, adj);
 	if (error)
 		goto out_error;
 
@@ -1493,7 +1507,7 @@ __xfs_refcount_cow_alloc(
 
 	/* Add refcount btree reservation */
 	return xfs_refcount_adjust_cow(rcur, agbno, aglen,
-			XFS_REFCOUNT_ADJUST_COW_ALLOC, dfops);
+			XFS_REFCOUNT_ADJUST_COW_ALLOC);
 }
 
 /*
@@ -1511,7 +1525,7 @@ __xfs_refcount_cow_free(
 
 	/* Remove refcount btree reservation */
 	return xfs_refcount_adjust_cow(rcur, agbno, aglen,
-			XFS_REFCOUNT_ADJUST_COW_FREE, dfops);
+			XFS_REFCOUNT_ADJUST_COW_FREE);
 }
 
 /* Record a CoW staging extent in the refcount btree. */
@@ -1568,7 +1582,7 @@ struct xfs_refcount_recovery {
 /* Stuff an extent on the recovery list. */
 STATIC int
 xfs_refcount_recover_extent(
-	struct xfs_btree_cur		*cur,
+	struct xfs_btree_cur 		*cur,
 	union xfs_btree_rec		*rec,
 	void				*priv)
 {

@@ -707,6 +707,18 @@ cgfi_exit:
 	return rc;
 }
 
+/* Simple function to return a 64 bit hash of string.  Rarely called */
+static __u64 simple_hashstr(const char *str)
+{
+	const __u64 hash_mult =  1125899906842597ULL; /* a big enough prime */
+	__u64 hash = 0;
+
+	while (*str)
+		hash = (hash + (__u64) *str++) * hash_mult;
+
+	return hash;
+}
+
 int
 cifs_get_inode_info(struct inode **inode, const char *full_path,
 		    FILE_ALL_INFO *data, struct super_block *sb, int xid,
@@ -734,7 +746,8 @@ cifs_get_inode_info(struct inode **inode, const char *full_path,
 	cifs_dbg(FYI, "Getting info on %s\n", full_path);
 
 	if ((data == NULL) && (*inode != NULL)) {
-		if (CIFS_CACHE_READ(CIFS_I(*inode))) {
+		if (CIFS_CACHE_READ(CIFS_I(*inode)) &&
+		    CIFS_I(*inode)->time != 0) {
 			cifs_dbg(FYI, "No need to revalidate cached inode sizes\n");
 			goto cgii_exit;
 		}
@@ -816,6 +829,14 @@ cifs_get_inode_info(struct inode **inode, const char *full_path,
 						 tmprc);
 					fattr.cf_uniqueid = iunique(sb, ROOT_I);
 					cifs_autodisable_serverino(cifs_sb);
+				} else if ((fattr.cf_uniqueid == 0) &&
+						strlen(full_path) == 0) {
+					/* some servers ret bad root ino ie 0 */
+					cifs_dbg(FYI, "Invalid (0) inodenum\n");
+					fattr.cf_flags |=
+						CIFS_FATTR_FAKE_ROOT_INO;
+					fattr.cf_uniqueid =
+						simple_hashstr(tcon->treeName);
 				}
 			}
 		} else
@@ -832,6 +853,16 @@ cifs_get_inode_info(struct inode **inode, const char *full_path,
 				&fattr.cf_uniqueid, data);
 			if (tmprc)
 				fattr.cf_uniqueid = CIFS_I(*inode)->uniqueid;
+			else if ((fattr.cf_uniqueid == 0) &&
+					strlen(full_path) == 0) {
+				/*
+				 * Reuse existing root inode num since
+				 * inum zero for root causes ls of . and .. to
+				 * not be returned
+				 */
+				cifs_dbg(FYI, "Srv ret 0 inode num for root\n");
+				fattr.cf_uniqueid = CIFS_I(*inode)->uniqueid;
+			}
 		} else
 			fattr.cf_uniqueid = CIFS_I(*inode)->uniqueid;
 	}
@@ -893,6 +924,9 @@ cifs_get_inode_info(struct inode **inode, const char *full_path,
 	}
 
 cgii_exit:
+	if ((*inode) && ((*inode)->i_ino == 0))
+		cifs_dbg(FYI, "inode number of zero returned\n");
+
 	kfree(buf);
 	cifs_put_tlink(tlink);
 	return rc;
@@ -1066,10 +1100,7 @@ iget_no_retry:
 
 out:
 	kfree(path);
-	/* can not call macro free_xid here since in a void func
-	 * TODO: This is no longer true
-	 */
-	_free_xid(xid);
+	free_xid(xid);
 	return inode;
 }
 
@@ -1827,13 +1858,13 @@ cifs_inode_needs_reval(struct inode *inode)
 	struct cifsInodeInfo *cifs_i = CIFS_I(inode);
 	struct cifs_sb_info *cifs_sb = CIFS_SB(inode->i_sb);
 
+	if (cifs_i->time == 0)
+		return true;
+
 	if (CIFS_CACHE_READ(cifs_i))
 		return false;
 
 	if (!lookupCacheEnabled)
-		return true;
-
-	if (cifs_i->time == 0)
 		return true;
 
 	if (!cifs_sb->actimeo)
@@ -2074,10 +2105,14 @@ static int cifs_truncate_page(struct address_space *mapping, loff_t from)
 
 static void cifs_setsize(struct inode *inode, loff_t offset)
 {
+	struct cifsInodeInfo *cifs_i = CIFS_I(inode);
+
 	spin_lock(&inode->i_lock);
 	i_size_write(inode, offset);
 	spin_unlock(&inode->i_lock);
 
+	/* Cached inode must be refreshed on truncate */
+	cifs_i->time = 0;
 	truncate_pagecache(inode, offset);
 }
 

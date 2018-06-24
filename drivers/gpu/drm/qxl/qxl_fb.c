@@ -95,7 +95,7 @@ static void qxlfb_destroy_pinned_object(struct drm_gem_object *gobj)
 	qxl_bo_kunmap(qbo);
 	qxl_bo_unpin(qbo);
 
-	drm_gem_object_unreference_unlocked(gobj);
+	drm_gem_object_put_unlocked(gobj);
 }
 
 int qxl_get_handle_for_primary_fb(struct qxl_device *qdev,
@@ -185,8 +185,6 @@ static int qxlfb_framebuffer_dirty(struct drm_framebuffer *fb,
 	/*
 	 * we are using a shadow draw buffer, at qdev->surface0_shadow
 	 */
-	qxl_io_log(qdev, "dirty x[%d, %d], y[%d, %d]\n", clips->x1, clips->x2,
-		   clips->y1, clips->y2);
 	image->dx = clips->x1;
 	image->dy = clips->y1;
 	image->width = clips->x2 - clips->x1;
@@ -316,11 +314,11 @@ out_unref:
 		qxl_bo_unpin(qbo);
 	}
 	if (fb && ret) {
-		drm_gem_object_unreference_unlocked(gobj);
+		drm_gem_object_put_unlocked(gobj);
 		drm_framebuffer_cleanup(fb);
 		kfree(fb);
 	}
-	drm_gem_object_unreference_unlocked(gobj);
+	drm_gem_object_put_unlocked(gobj);
 	return ret;
 }
 

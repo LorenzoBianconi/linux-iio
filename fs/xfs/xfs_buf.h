@@ -218,20 +218,9 @@ typedef struct xfs_buf {
 } xfs_buf_t;
 
 /* Finding and Reading Buffers */
-struct xfs_buf *_xfs_buf_find(struct xfs_buftarg *target,
-			      struct xfs_buf_map *map, int nmaps,
-			      xfs_buf_flags_t flags, struct xfs_buf *new_bp);
-
-static inline struct xfs_buf *
-xfs_incore(
-	struct xfs_buftarg	*target,
-	xfs_daddr_t		blkno,
-	size_t			numblks,
-	xfs_buf_flags_t		flags)
-{
-	DEFINE_SINGLE_BUF_MAP(map, blkno, numblks);
-	return _xfs_buf_find(target, &map, 1, flags, NULL);
-}
+struct xfs_buf *xfs_buf_incore(struct xfs_buftarg *target,
+			   xfs_daddr_t blkno, size_t numblks,
+			   xfs_buf_flags_t flags);
 
 struct xfs_buf *_xfs_buf_alloc(struct xfs_buftarg *target,
 			       struct xfs_buf_map *map, int nmaps,
@@ -358,6 +347,18 @@ extern void xfs_buf_terminate(void);
 
 void xfs_buf_set_ref(struct xfs_buf *bp, int lru_ref);
 
+/*
+ * If the buffer is already on the LRU, do nothing. Otherwise set the buffer
+ * up with a reference count of 0 so it will be tossed from the cache when
+ * released.
+ */
+static inline void xfs_buf_oneshot(struct xfs_buf *bp)
+{
+	if (!list_empty(&bp->b_lru) || atomic_read(&bp->b_lru_ref) > 1)
+		return;
+	atomic_set(&bp->b_lru_ref, 0);
+}
+
 static inline int xfs_buf_ispinned(struct xfs_buf *bp)
 {
 	return atomic_read(&bp->b_pin_count);
@@ -388,7 +389,7 @@ xfs_buf_update_cksum(struct xfs_buf *bp, unsigned long cksum_offset)
  */
 extern xfs_buftarg_t *xfs_alloc_buftarg(struct xfs_mount *,
 			struct block_device *, struct dax_device *);
-extern void xfs_free_buftarg(struct xfs_mount *, struct xfs_buftarg *);
+extern void xfs_free_buftarg(struct xfs_buftarg *);
 extern void xfs_wait_buftarg(xfs_buftarg_t *);
 extern int xfs_setsize_buftarg(xfs_buftarg_t *, unsigned int);
 

@@ -11,6 +11,7 @@
 
 #include <linux/proc_fs.h>
 #include <linux/proc_ns.h>
+#include <linux/refcount.h>
 #include <linux/spinlock.h>
 #include <linux/atomic.h>
 #include <linux/binfmts.h>
@@ -36,26 +37,40 @@ struct proc_dir_entry {
 	 * negative -> it's going away RSN
 	 */
 	atomic_t in_use;
-	atomic_t count;		/* use count */
+	refcount_t refcnt;
 	struct list_head pde_openers;	/* who did ->open, but not ->release */
 	/* protects ->pde_openers and all struct pde_opener instances */
 	spinlock_t pde_unload_lock;
 	struct completion *pde_unload_completion;
 	const struct inode_operations *proc_iops;
 	const struct file_operations *proc_fops;
+	union {
+		const struct seq_operations *seq_ops;
+		int (*single_show)(struct seq_file *, void *);
+	};
 	void *data;
+	unsigned int state_size;
 	unsigned int low_ino;
 	nlink_t nlink;
 	kuid_t uid;
 	kgid_t gid;
 	loff_t size;
 	struct proc_dir_entry *parent;
-	struct rb_root_cached subdir;
+	struct rb_root subdir;
 	struct rb_node subdir_node;
+	char *name;
 	umode_t mode;
 	u8 namelen;
-	char name[];
+#ifdef CONFIG_64BIT
+#define SIZEOF_PDE_INLINE_NAME	(192-155)
+#else
+#define SIZEOF_PDE_INLINE_NAME	(128-95)
+#endif
+	char inline_name[SIZEOF_PDE_INLINE_NAME];
 } __randomize_layout;
+
+extern struct kmem_cache *proc_dir_entry_cache;
+void pde_free(struct proc_dir_entry *pde);
 
 union proc_op {
 	int (*proc_get_link)(struct dentry *, struct path *);
@@ -121,6 +136,8 @@ unsigned name_to_int(const struct qstr *qstr);
  */
 extern const struct file_operations proc_tid_children_operations;
 
+extern void proc_task_name(struct seq_file *m, struct task_struct *p,
+			   bool escape);
 extern int proc_tid_stat(struct seq_file *, struct pid_namespace *,
 			 struct pid *, struct task_struct *);
 extern int proc_tgid_stat(struct seq_file *, struct pid_namespace *,
@@ -137,21 +154,25 @@ extern const struct dentry_operations pid_dentry_operations;
 extern int pid_getattr(const struct path *, struct kstat *, u32, unsigned int);
 extern int proc_setattr(struct dentry *, struct iattr *);
 extern struct inode *proc_pid_make_inode(struct super_block *, struct task_struct *, umode_t);
-extern int pid_revalidate(struct dentry *, unsigned int);
+extern void pid_update_inode(struct task_struct *, struct inode *);
 extern int pid_delete_dentry(const struct dentry *);
 extern int proc_pid_readdir(struct file *, struct dir_context *);
 extern struct dentry *proc_pid_lookup(struct inode *, struct dentry *, unsigned int);
 extern loff_t mem_lseek(struct file *, loff_t, int);
 
 /* Lookups */
-typedef int instantiate_t(struct inode *, struct dentry *,
+typedef struct dentry *instantiate_t(struct dentry *,
 				     struct task_struct *, const void *);
-extern bool proc_fill_cache(struct file *, struct dir_context *, const char *, int,
+bool proc_fill_cache(struct file *, struct dir_context *, const char *, unsigned int,
 			   instantiate_t, struct task_struct *, const void *);
 
 /*
  * generic.c
  */
+struct proc_dir_entry *proc_create_reg(const char *name, umode_t mode,
+		struct proc_dir_entry **parent, void *data);
+struct proc_dir_entry *proc_register(struct proc_dir_entry *dir,
+		struct proc_dir_entry *dp);
 extern struct dentry *proc_lookup(struct inode *, struct dentry *, unsigned int);
 struct dentry *proc_lookup_de(struct inode *, struct dentry *, struct proc_dir_entry *);
 extern int proc_readdir(struct file *, struct dir_context *);
@@ -159,7 +180,7 @@ int proc_readdir_de(struct file *, struct dir_context *, struct proc_dir_entry *
 
 static inline struct proc_dir_entry *pde_get(struct proc_dir_entry *pde)
 {
-	atomic_inc(&pde->count);
+	refcount_inc(&pde->refcnt);
 	return pde;
 }
 extern void pde_put(struct proc_dir_entry *);
@@ -177,12 +198,12 @@ struct pde_opener {
 	struct list_head lh;
 	bool closing;
 	struct completion *c;
-};
+} __randomize_layout;
 extern const struct inode_operations proc_link_inode_operations;
 
 extern const struct inode_operations proc_pid_link_inode_operations;
 
-extern void proc_init_inodecache(void);
+void proc_init_kmemcache(void);
 void set_proc_pid_nlink(void);
 extern struct inode *proc_get_inode(struct super_block *, struct proc_dir_entry *);
 extern int proc_fill_super(struct super_block *, void *data, int flags);

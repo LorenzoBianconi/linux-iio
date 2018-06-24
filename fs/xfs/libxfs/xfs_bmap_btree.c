@@ -272,10 +272,10 @@ xfs_bmbt_alloc_block(
 		cur->bc_private.b.dfops->dop_low = true;
 	}
 	if (WARN_ON_ONCE(args.fsbno == NULLFSBLOCK)) {
-		XFS_BTREE_TRACE_CURSOR(cur, XBT_EXIT);
 		*stat = 0;
 		return 0;
 	}
+
 	ASSERT(args.len == 1);
 	cur->bc_private.b.firstblock = args.fsbno;
 	cur->bc_private.b.allocated++;
@@ -286,12 +286,10 @@ xfs_bmbt_alloc_block(
 
 	new->l = cpu_to_be64(args.fsbno);
 
-	XFS_BTREE_TRACE_CURSOR(cur, XBT_EXIT);
 	*stat = 1;
 	return 0;
 
  error0:
-	XFS_BTREE_TRACE_CURSOR(cur, XBT_ERROR);
 	return error;
 }
 
@@ -661,4 +659,13 @@ xfs_bmbt_change_owner(
 	error = xfs_btree_change_owner(cur, new_owner, buffer_list);
 	xfs_btree_del_cursor(cur, error ? XFS_BTREE_ERROR : XFS_BTREE_NOERROR);
 	return error;
+}
+
+/* Calculate the bmap btree size for some records. */
+unsigned long long
+xfs_bmbt_calc_size(
+	struct xfs_mount	*mp,
+	unsigned long long	len)
+{
+	return xfs_btree_calc_size(mp->m_bmap_dmnr, len);
 }

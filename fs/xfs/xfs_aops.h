@@ -18,7 +18,7 @@
 #ifndef __XFS_AOPS_H__
 #define __XFS_AOPS_H__
 
-extern struct bio_set *xfs_ioend_bioset;
+extern struct bio_set xfs_ioend_bioset;
 
 /*
  * Types of I/O for bmap clustering and I/O completion tracking.
@@ -54,6 +54,7 @@ struct xfs_ioend {
 };
 
 extern const struct address_space_operations xfs_address_space_operations;
+extern const struct address_space_operations xfs_dax_aops;
 
 int	xfs_setfilesize(struct xfs_inode *ip, xfs_off_t offset, size_t size);
 

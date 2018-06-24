@@ -148,7 +148,7 @@ xfs_inobt_get_rec(
 /*
  * Insert a single inobt record. Cursor must already point to desired location.
  */
-STATIC int
+int
 xfs_inobt_insert_rec(
 	struct xfs_btree_cur	*cur,
 	uint16_t		holemask,
@@ -2406,7 +2406,7 @@ xfs_ialloc_compute_maxlevels(
 	uint		inodes;
 
 	inodes = (1LL << XFS_INO_AGINO_BITS(mp)) >> XFS_INODES_PER_CHUNK_LOG;
-	mp->m_in_maxlevels = xfs_btree_compute_maxlevels(mp, mp->m_inobt_mnr,
+	mp->m_in_maxlevels = xfs_btree_compute_maxlevels(mp->m_inobt_mnr,
 							 inodes);
 }
 

@@ -65,7 +65,7 @@ enum antenna_impedance {
 	two_hundred_ohm
 };
 
-enum lnaGain {
+enum lna_gain {
 	automatic,
 	max,
 	max_minus_6,
@@ -135,9 +135,9 @@ enum address_filtering {
 };
 
 enum dagc {
-	normalMode,
+	normal_mode,
 	improve,
-	improve4LowModulationIndex
+	improve_for_low_modulation_index
 };
 
 #endif

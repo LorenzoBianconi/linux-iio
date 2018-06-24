@@ -37,8 +37,17 @@
 
 unsigned long long dm_get_timestamp(struct dc_context *ctx)
 {
-	/* TODO: return actual timestamp */
-	return 0;
+	struct timespec64 time;
+
+	getrawmonotonic64(&time);
+	return timespec64_to_ns(&time);
+}
+
+unsigned long long dm_get_elapse_time_in_ns(struct dc_context *ctx,
+		unsigned long long current_time_stamp,
+		unsigned long long last_time_stamp)
+{
+	return current_time_stamp - last_time_stamp;
 }
 
 void dm_perf_trace_timestamp(const char *func_name, unsigned int line)
@@ -70,15 +79,6 @@ bool dm_read_persistent_data(struct dc_context *ctx,
 }
 
 /**** power component interfaces ****/
-
-bool dm_pp_pre_dce_clock_change(
-		struct dc_context *ctx,
-		struct dm_pp_gpu_clock_range *requested_state,
-		struct dm_pp_gpu_clock_range *actual_state)
-{
-	/*TODO*/
-	return false;
-}
 
 bool dm_pp_apply_display_requirements(
 		const struct dc_context *ctx,
@@ -146,30 +146,6 @@ bool dm_pp_apply_display_requirements(
 
 		/* TODO: replace by a separate call to 'apply display cfg'? */
 		amdgpu_pm_compute_clocks(adev);
-	}
-
-	return true;
-}
-
-bool dc_service_get_system_clocks_range(
-		const struct dc_context *ctx,
-		struct dm_pp_gpu_clock_range *sys_clks)
-{
-	struct amdgpu_device *adev = ctx->driver_context;
-
-	/* Default values, in case PPLib is not compiled-in. */
-	sys_clks->mclk.max_khz = 800000;
-	sys_clks->mclk.min_khz = 800000;
-
-	sys_clks->sclk.max_khz = 600000;
-	sys_clks->sclk.min_khz = 300000;
-
-	if (adev->pm.dpm_enabled) {
-		sys_clks->mclk.max_khz = amdgpu_dpm_get_mclk(adev, false);
-		sys_clks->mclk.min_khz = amdgpu_dpm_get_mclk(adev, true);
-
-		sys_clks->sclk.max_khz = amdgpu_dpm_get_sclk(adev, false);
-		sys_clks->sclk.min_khz = amdgpu_dpm_get_sclk(adev, true);
 	}
 
 	return true;

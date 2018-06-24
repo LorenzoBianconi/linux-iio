@@ -101,13 +101,19 @@ static int eventfd_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static __poll_t eventfd_poll(struct file *file, poll_table *wait)
+static struct wait_queue_head *
+eventfd_get_poll_head(struct file *file, __poll_t events)
+{
+	struct eventfd_ctx *ctx = file->private_data;
+
+	return &ctx->wqh;
+}
+
+static __poll_t eventfd_poll_mask(struct file *file, __poll_t eventmask)
 {
 	struct eventfd_ctx *ctx = file->private_data;
 	__poll_t events = 0;
 	u64 count;
-
-	poll_wait(file, &ctx->wqh, wait);
 
 	/*
 	 * All writes to ctx->count occur within ctx->wqh.lock.  This read
@@ -305,7 +311,8 @@ static const struct file_operations eventfd_fops = {
 	.show_fdinfo	= eventfd_show_fdinfo,
 #endif
 	.release	= eventfd_release,
-	.poll		= eventfd_poll,
+	.get_poll_head	= eventfd_get_poll_head,
+	.poll_mask	= eventfd_poll_mask,
 	.read		= eventfd_read,
 	.write		= eventfd_write,
 	.llseek		= noop_llseek,
@@ -380,7 +387,7 @@ struct eventfd_ctx *eventfd_ctx_fileget(struct file *file)
 }
 EXPORT_SYMBOL_GPL(eventfd_ctx_fileget);
 
-SYSCALL_DEFINE2(eventfd2, unsigned int, count, int, flags)
+static int do_eventfd(unsigned int count, int flags)
 {
 	struct eventfd_ctx *ctx;
 	int fd;
@@ -409,8 +416,13 @@ SYSCALL_DEFINE2(eventfd2, unsigned int, count, int, flags)
 	return fd;
 }
 
+SYSCALL_DEFINE2(eventfd2, unsigned int, count, int, flags)
+{
+	return do_eventfd(count, flags);
+}
+
 SYSCALL_DEFINE1(eventfd, unsigned int, count)
 {
-	return sys_eventfd2(count, 0);
+	return do_eventfd(count, 0);
 }
 

@@ -9,6 +9,7 @@
 #include <linux/scatterlist.h>
 #include <linux/dma-contiguous.h>
 #include <linux/pfn.h>
+#include <linux/set_memory.h>
 
 #define DIRECT_MAPPING_ERROR		0
 
@@ -20,11 +21,26 @@
 #define ARCH_ZONE_DMA_BITS 24
 #endif
 
+/*
+ * For AMD SEV all DMA must be to unencrypted addresses.
+ */
+static inline bool force_dma_unencrypted(void)
+{
+	return sev_active();
+}
+
 static bool
 check_addr(struct device *dev, dma_addr_t dma_addr, size_t size,
 		const char *caller)
 {
 	if (unlikely(dev && !dma_capable(dev, dma_addr, size))) {
+		if (!dev->dma_mask) {
+			dev_err(dev,
+				"%s: call on device without dma_mask\n",
+				caller);
+			return false;
+		}
+
 		if (*dev->dma_mask >= DMA_BIT_MASK(32)) {
 			dev_err(dev,
 				"%s: overflow %pad+%zu of device mask %llx\n",
@@ -37,7 +53,9 @@ check_addr(struct device *dev, dma_addr_t dma_addr, size_t size,
 
 static bool dma_coherent_ok(struct device *dev, phys_addr_t phys, size_t size)
 {
-	return phys_to_dma(dev, phys) + size - 1 <= dev->coherent_dma_mask;
+	dma_addr_t addr = force_dma_unencrypted() ?
+		__phys_to_dma(dev, phys) : phys_to_dma(dev, phys);
+	return addr + size - 1 <= dev->coherent_dma_mask;
 }
 
 void *dma_direct_alloc(struct device *dev, size_t size, dma_addr_t *dma_handle,
@@ -46,6 +64,10 @@ void *dma_direct_alloc(struct device *dev, size_t size, dma_addr_t *dma_handle,
 	unsigned int count = PAGE_ALIGN(size) >> PAGE_SHIFT;
 	int page_order = get_order(size);
 	struct page *page = NULL;
+	void *ret;
+
+	/* we always manually zero the memory once we are done: */
+	gfp &= ~__GFP_ZERO;
 
 	/* GFP_DMA32 and GFP_DMA are no ops without the corresponding zones: */
 	if (dev->coherent_dma_mask <= DMA_BIT_MASK(ARCH_ZONE_DMA_BITS))
@@ -69,7 +91,15 @@ again:
 		__free_pages(page, page_order);
 		page = NULL;
 
-		if (dev->coherent_dma_mask < DMA_BIT_MASK(32) &&
+		if (IS_ENABLED(CONFIG_ZONE_DMA32) &&
+		    dev->coherent_dma_mask < DMA_BIT_MASK(64) &&
+		    !(gfp & (GFP_DMA32 | GFP_DMA))) {
+			gfp |= GFP_DMA32;
+			goto again;
+		}
+
+		if (IS_ENABLED(CONFIG_ZONE_DMA) &&
+		    dev->coherent_dma_mask < DMA_BIT_MASK(32) &&
 		    !(gfp & GFP_DMA)) {
 			gfp = (gfp & ~GFP_DMA32) | GFP_DMA;
 			goto again;
@@ -78,10 +108,15 @@ again:
 
 	if (!page)
 		return NULL;
-
-	*dma_handle = phys_to_dma(dev, page_to_phys(page));
-	memset(page_address(page), 0, size);
-	return page_address(page);
+	ret = page_address(page);
+	if (force_dma_unencrypted()) {
+		set_memory_decrypted((unsigned long)ret, 1 << page_order);
+		*dma_handle = __phys_to_dma(dev, page_to_phys(page));
+	} else {
+		*dma_handle = phys_to_dma(dev, page_to_phys(page));
+	}
+	memset(ret, 0, size);
+	return ret;
 }
 
 /*
@@ -92,12 +127,15 @@ void dma_direct_free(struct device *dev, size_t size, void *cpu_addr,
 		dma_addr_t dma_addr, unsigned long attrs)
 {
 	unsigned int count = PAGE_ALIGN(size) >> PAGE_SHIFT;
+	unsigned int page_order = get_order(size);
 
+	if (force_dma_unencrypted())
+		set_memory_encrypted((unsigned long)cpu_addr, 1 << page_order);
 	if (!dma_release_from_contiguous(dev, virt_to_page(cpu_addr), count))
-		free_pages((unsigned long)cpu_addr, get_order(size));
+		free_pages((unsigned long)cpu_addr, page_order);
 }
 
-static dma_addr_t dma_direct_map_page(struct device *dev, struct page *page,
+dma_addr_t dma_direct_map_page(struct device *dev, struct page *page,
 		unsigned long offset, size_t size, enum dma_data_direction dir,
 		unsigned long attrs)
 {
@@ -108,8 +146,8 @@ static dma_addr_t dma_direct_map_page(struct device *dev, struct page *page,
 	return dma_addr;
 }
 
-static int dma_direct_map_sg(struct device *dev, struct scatterlist *sgl,
-		int nents, enum dma_data_direction dir, unsigned long attrs)
+int dma_direct_map_sg(struct device *dev, struct scatterlist *sgl, int nents,
+		enum dma_data_direction dir, unsigned long attrs)
 {
 	int i;
 	struct scatterlist *sg;
@@ -141,10 +179,16 @@ int dma_direct_supported(struct device *dev, u64 mask)
 	if (mask < DMA_BIT_MASK(32))
 		return 0;
 #endif
+	/*
+	 * Various PCI/PCIe bridges have broken support for > 32bit DMA even
+	 * if the device itself might support it.
+	 */
+	if (dev->dma_32bit_limit && mask > DMA_BIT_MASK(32))
+		return 0;
 	return 1;
 }
 
-static int dma_direct_mapping_error(struct device *dev, dma_addr_t dma_addr)
+int dma_direct_mapping_error(struct device *dev, dma_addr_t dma_addr)
 {
 	return dma_addr == DIRECT_MAPPING_ERROR;
 }
@@ -156,6 +200,5 @@ const struct dma_map_ops dma_direct_ops = {
 	.map_sg			= dma_direct_map_sg,
 	.dma_supported		= dma_direct_supported,
 	.mapping_error		= dma_direct_mapping_error,
-	.is_phys		= 1,
 };
 EXPORT_SYMBOL(dma_direct_ops);

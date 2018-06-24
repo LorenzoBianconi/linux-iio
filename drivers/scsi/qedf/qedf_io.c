@@ -917,7 +917,7 @@ qedf_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *sc_cmd)
 	struct qedf_ctx *qedf = lport_priv(lport);
 	struct fc_rport *rport = starget_to_rport(scsi_target(sc_cmd->device));
 	struct fc_rport_libfc_priv *rp = rport->dd_data;
-	struct qedf_rport *fcport = rport->dd_data;
+	struct qedf_rport *fcport;
 	struct qedf_ioreq *io_req;
 	int rc = 0;
 	int rval;
@@ -1200,6 +1200,12 @@ void qedf_scsi_completion(struct qedf_ctx *qedf, struct fcoe_cqe *cqe,
 					fcport->retry_delay_timestamp =
 					    jiffies + (qualifier * HZ / 10);
 				}
+				/* Record stats */
+				if (io_req->cdb_status ==
+				    SAM_STAT_TASK_SET_FULL)
+					qedf->task_set_fulls++;
+				else
+					qedf->busy++;
 			}
 		}
 		if (io_req->fcp_resid)
@@ -1865,6 +1871,11 @@ static int qedf_execute_tmf(struct qedf_rport *fcport, struct scsi_cmnd *sc_cmd,
 		rc = -EAGAIN;
 		goto reset_tmf_err;
 	}
+
+	if (tm_flags == FCP_TMF_LUN_RESET)
+		qedf->lun_resets++;
+	else if (tm_flags == FCP_TMF_TGT_RESET)
+		qedf->target_resets++;
 
 	/* Initialize rest of io_req fields */
 	io_req->sc_cmd = sc_cmd;

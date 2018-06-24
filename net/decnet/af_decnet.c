@@ -1180,13 +1180,11 @@ static int dn_accept(struct socket *sock, struct socket *newsock, int flags,
 }
 
 
-static int dn_getname(struct socket *sock, struct sockaddr *uaddr,int *uaddr_len,int peer)
+static int dn_getname(struct socket *sock, struct sockaddr *uaddr,int peer)
 {
 	struct sockaddr_dn *sa = (struct sockaddr_dn *)uaddr;
 	struct sock *sk = sock->sk;
 	struct dn_scp *scp = DN_SK(sk);
-
-	*uaddr_len = sizeof(struct sockaddr_dn);
 
 	lock_sock(sk);
 
@@ -1205,15 +1203,15 @@ static int dn_getname(struct socket *sock, struct sockaddr *uaddr,int *uaddr_len
 
 	release_sock(sk);
 
-	return 0;
+	return sizeof(struct sockaddr_dn);
 }
 
 
-static __poll_t dn_poll(struct file *file, struct socket *sock, poll_table  *wait)
+static __poll_t dn_poll_mask(struct socket *sock, __poll_t events)
 {
 	struct sock *sk = sock->sk;
 	struct dn_scp *scp = DN_SK(sk);
-	__poll_t mask = datagram_poll(file, sock, wait);
+	__poll_t mask = datagram_poll_mask(sock, events);
 
 	if (!skb_queue_empty(&scp->other_receive_queue))
 		mask |= EPOLLRDBAND;
@@ -2316,19 +2314,6 @@ static const struct seq_operations dn_socket_seq_ops = {
 	.stop	= dn_socket_seq_stop,
 	.show	= dn_socket_seq_show,
 };
-
-static int dn_socket_seq_open(struct inode *inode, struct file *file)
-{
-	return seq_open_private(file, &dn_socket_seq_ops,
-			sizeof(struct dn_iter_state));
-}
-
-static const struct file_operations dn_socket_seq_fops = {
-	.open		= dn_socket_seq_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= seq_release_private,
-};
 #endif
 
 static const struct net_proto_family	dn_family_ops = {
@@ -2346,7 +2331,7 @@ static const struct proto_ops dn_proto_ops = {
 	.socketpair =	sock_no_socketpair,
 	.accept =	dn_accept,
 	.getname =	dn_getname,
-	.poll =		dn_poll,
+	.poll_mask =	dn_poll_mask,
 	.ioctl =	dn_ioctl,
 	.listen =	dn_listen,
 	.shutdown =	dn_shutdown,
@@ -2385,7 +2370,9 @@ static int __init decnet_init(void)
 	dev_add_pack(&dn_dix_packet_type);
 	register_netdevice_notifier(&dn_dev_notifier);
 
-	proc_create("decnet", S_IRUGO, init_net.proc_net, &dn_socket_seq_fops);
+	proc_create_seq_private("decnet", 0444, init_net.proc_net,
+			&dn_socket_seq_ops, sizeof(struct dn_iter_state),
+			NULL);
 	dn_register_sysctl();
 out:
 	return rc;

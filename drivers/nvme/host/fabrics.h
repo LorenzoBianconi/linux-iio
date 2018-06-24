@@ -124,6 +124,9 @@ struct nvmf_ctrl_options {
  *	1. At minimum, 'required_opts' and 'allowed_opts' should
  *	   be set to the same enum parsing options defined earlier.
  *	2. create_ctrl() must be defined (even if it does nothing)
+ *	3. struct nvmf_transport_ops must be statically allocated in the
+ *	   modules .bss section so that a pure module_get on @module
+ *	   prevents the memory from beeing freed.
  */
 struct nvmf_transport_ops {
 	struct list_head	entry;
@@ -139,7 +142,9 @@ static inline bool
 nvmf_ctlr_matches_baseopts(struct nvme_ctrl *ctrl,
 			struct nvmf_ctrl_options *opts)
 {
-	if (strcmp(opts->subsysnqn, ctrl->opts->subsysnqn) ||
+	if (ctrl->state == NVME_CTRL_DELETING ||
+	    ctrl->state == NVME_CTRL_DEAD ||
+	    strcmp(opts->subsysnqn, ctrl->opts->subsysnqn) ||
 	    strcmp(opts->host->nqn, ctrl->opts->host->nqn) ||
 	    memcmp(&opts->host->id, &ctrl->opts->host->id, sizeof(uuid_t)))
 		return false;
@@ -157,36 +162,7 @@ void nvmf_unregister_transport(struct nvmf_transport_ops *ops);
 void nvmf_free_options(struct nvmf_ctrl_options *opts);
 int nvmf_get_address(struct nvme_ctrl *ctrl, char *buf, int size);
 bool nvmf_should_reconnect(struct nvme_ctrl *ctrl);
-
-static inline blk_status_t nvmf_check_init_req(struct nvme_ctrl *ctrl,
-		struct request *rq)
-{
-	struct nvme_command *cmd = nvme_req(rq)->cmd;
-
-	/*
-	 * We cannot accept any other command until the connect command has
-	 * completed, so only allow connect to pass.
-	 */
-	if (!blk_rq_is_passthrough(rq) ||
-	    cmd->common.opcode != nvme_fabrics_command ||
-	    cmd->fabrics.fctype != nvme_fabrics_type_connect) {
-		/*
-		 * Connecting state means transport disruption or initial
-		 * establishment, which can take a long time and even might
-		 * fail permanently, fail fast to give upper layers a chance
-		 * to failover.
-		 * Deleting state means that the ctrl will never accept commands
-		 * again, fail it permanently.
-		 */
-		if (ctrl->state == NVME_CTRL_CONNECTING ||
-		    ctrl->state == NVME_CTRL_DELETING) {
-			nvme_req(rq)->status = NVME_SC_ABORT_REQ;
-			return BLK_STS_IOERR;
-		}
-		return BLK_STS_RESOURCE; /* try again later */
-	}
-
-	return BLK_STS_OK;
-}
+blk_status_t nvmf_check_if_ready(struct nvme_ctrl *ctrl,
+	struct request *rq, bool queue_live, bool is_connected);
 
 #endif /* _NVME_FABRICS_H */
