@@ -119,6 +119,85 @@ static irqreturn_t st_sensors_irq_thread(int irq, void *p)
 	return IRQ_HANDLED;
 }
 
+static int
+st_sensors_config_irqline(struct iio_dev *indio_dev,
+			  unsigned long *irq_trig)
+{
+	struct st_sensor_data *sdata = iio_priv(indio_dev);
+	int err;
+
+	/*
+	 * If the IRQ is triggered on falling edge, we need to mark the
+	 * interrupt as active low, if the hardware supports this.
+	 */
+	switch(*irq_trig) {
+	case IRQF_TRIGGER_FALLING:
+	case IRQF_TRIGGER_LOW:
+		if (!sdata->sensor_settings->drdy_irq.addr_ihl) {
+			dev_err(&indio_dev->dev,
+				"falling/low specified for IRQ "
+				"but hardware only support rising/high: "
+				"will request rising/high\n");
+			if (*irq_trig == IRQF_TRIGGER_FALLING)
+				*irq_trig = IRQF_TRIGGER_RISING;
+			if (*irq_trig == IRQF_TRIGGER_LOW)
+				*irq_trig = IRQF_TRIGGER_HIGH;
+		} else {
+			/* Set up INT active low i.e. falling edge */
+			err = st_sensors_write_data_with_mask(indio_dev,
+				sdata->sensor_settings->drdy_irq.addr_ihl,
+				sdata->sensor_settings->drdy_irq.mask_ihl, 1);
+			if (err < 0)
+				return err;
+			dev_info(&indio_dev->dev,
+				 "interrupts on the falling edge or "
+				 "active low level\n");
+		}
+		break;
+	case IRQF_TRIGGER_RISING:
+		dev_info(&indio_dev->dev,
+			 "interrupts on the rising edge\n");
+		break;
+	case IRQF_TRIGGER_HIGH:
+		dev_info(&indio_dev->dev,
+			 "interrupts active high level\n");
+		break;
+	default:
+		/* This is the most preferred mode, if possible */
+		dev_err(&indio_dev->dev,
+			"unsupported IRQ trigger specified (%lx), enforce "
+			"rising edge\n", *irq_trig);
+		*irq_trig = IRQF_TRIGGER_RISING;
+	}
+
+	/* Tell the interrupt handler that we're dealing with edges */
+	if (*irq_trig == IRQF_TRIGGER_FALLING ||
+	    *irq_trig == IRQF_TRIGGER_RISING)
+		sdata->edge_irq = true;
+	else
+		/*
+		 * If we're not using edges (i.e. level interrupts) we
+		 * just mask off the IRQ, handle one interrupt, then
+		 * if the line is still low, we return to the
+		 * interrupt handler top half again and start over.
+		 */
+		*irq_trig |= IRQF_ONESHOT;
+
+	/*
+	 * If the interrupt pin is Open Drain, by definition this
+	 * means that the interrupt line may be shared with other
+	 * peripherals. But to do this we also need to have a status
+	 * register and mask to figure out if this sensor was firing
+	 * the IRQ or not, so we can tell the interrupt handle that
+	 * it was "our" interrupt.
+	 */
+	if (sdata->int_pin_open_drain &&
+	    sdata->sensor_settings->drdy_irq.stat_drdy.addr)
+		*irq_trig |= IRQF_SHARED;
+
+	return 0;
+}
+
 int st_sensors_allocate_trigger(struct iio_dev *indio_dev,
 				const struct iio_trigger_ops *trigger_ops)
 {
@@ -138,74 +217,10 @@ int st_sensors_allocate_trigger(struct iio_dev *indio_dev,
 
 	irq = sdata->get_irq_data_ready(indio_dev);
 	irq_trig = irqd_get_trigger_type(irq_get_irq_data(irq));
-	/*
-	 * If the IRQ is triggered on falling edge, we need to mark the
-	 * interrupt as active low, if the hardware supports this.
-	 */
-	switch(irq_trig) {
-	case IRQF_TRIGGER_FALLING:
-	case IRQF_TRIGGER_LOW:
-		if (!sdata->sensor_settings->drdy_irq.addr_ihl) {
-			dev_err(&indio_dev->dev,
-				"falling/low specified for IRQ "
-				"but hardware only support rising/high: "
-				"will request rising/high\n");
-			if (irq_trig == IRQF_TRIGGER_FALLING)
-				irq_trig = IRQF_TRIGGER_RISING;
-			if (irq_trig == IRQF_TRIGGER_LOW)
-				irq_trig = IRQF_TRIGGER_HIGH;
-		} else {
-			/* Set up INT active low i.e. falling edge */
-			err = st_sensors_write_data_with_mask(indio_dev,
-				sdata->sensor_settings->drdy_irq.addr_ihl,
-				sdata->sensor_settings->drdy_irq.mask_ihl, 1);
-			if (err < 0)
-				goto iio_trigger_free;
-			dev_info(&indio_dev->dev,
-				 "interrupts on the falling edge or "
-				 "active low level\n");
-		}
-		break;
-	case IRQF_TRIGGER_RISING:
-		dev_info(&indio_dev->dev,
-			 "interrupts on the rising edge\n");
-		break;
-	case IRQF_TRIGGER_HIGH:
-		dev_info(&indio_dev->dev,
-			 "interrupts active high level\n");
-		break;
-	default:
-		/* This is the most preferred mode, if possible */
-		dev_err(&indio_dev->dev,
-			"unsupported IRQ trigger specified (%lx), enforce "
-			"rising edge\n", irq_trig);
-		irq_trig = IRQF_TRIGGER_RISING;
-	}
 
-	/* Tell the interrupt handler that we're dealing with edges */
-	if (irq_trig == IRQF_TRIGGER_FALLING ||
-	    irq_trig == IRQF_TRIGGER_RISING)
-		sdata->edge_irq = true;
-	else
-		/*
-		 * If we're not using edges (i.e. level interrupts) we
-		 * just mask off the IRQ, handle one interrupt, then
-		 * if the line is still low, we return to the
-		 * interrupt handler top half again and start over.
-		 */
-		irq_trig |= IRQF_ONESHOT;
-
-	/*
-	 * If the interrupt pin is Open Drain, by definition this
-	 * means that the interrupt line may be shared with other
-	 * peripherals. But to do this we also need to have a status
-	 * register and mask to figure out if this sensor was firing
-	 * the IRQ or not, so we can tell the interrupt handle that
-	 * it was "our" interrupt.
-	 */
-	if (sdata->int_pin_open_drain &&
-	    sdata->sensor_settings->drdy_irq.stat_drdy.addr)
-		irq_trig |= IRQF_SHARED;
+	err = st_sensors_config_irqline(indio_dev, &irq_trig);
+	if (err < 0)
+		goto iio_trigger_free;
 
 	err = request_threaded_irq(sdata->get_irq_data_ready(indio_dev),
 			st_sensors_irq_handler,
