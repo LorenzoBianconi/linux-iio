@@ -69,6 +69,11 @@
 		IIO_DEVICE_ATTR(name, S_IRUGO, \
 			st_sensors_sysfs_scale_avail, NULL , 0);
 
+enum st_sensor_fifo_mode {
+	ST_SENSOR_FIFO_BYPASS = 0x0,
+	ST_SENSOR_FIFO_STREAM = 0x2,
+};
+
 struct st_sensor_odr_avl {
 	unsigned int hz;
 	u8 value;
@@ -132,12 +137,17 @@ struct st_sensor_das {
 
 /**
  * struct st_sensor_int_drdy - ST sensor device drdy line parameters
+ * struct fifo_drdy - FIFO data-ready configuration register.
  * @addr: address of INT drdy register.
  * @mask: mask to enable drdy line.
  * @addr_od: address to enable/disable Open Drain on the INT line.
  * @mask_od: mask to enable/disable Open Drain on the INT line.
  */
 struct st_sensor_int_drdy {
+	struct {
+		u8 addr;
+		u8 mask;
+	} fifo_drdy;
 	u8 addr;
 	u8 mask;
 	u8 addr_od;
@@ -168,6 +178,29 @@ struct st_sensor_data_ready_irq {
 		u8 en_addr;
 		u8 en_mask;
 	} ig1;
+};
+
+/**
+ * struct st_sensor_fifo_ops - ST FIFO settings
+ * @max_fifo_size: Sensor max fifo length.
+ * @fifo_mode: FIFO mode register info (addr + mask).
+ * @fifo_th: FIFO threshold register info (addr + mask).
+ * @fifo_diff: FIFO diff status register info (addr + mask).
+ */
+struct st_sensor_fifo_ops {
+	u8 max_fifo_size;
+	struct {
+		u8 addr;
+		u8 mask;
+	} fifo_mode;
+	struct {
+		u8 addr;
+		u8 mask;
+	} fifo_th;
+	struct {
+		u8 addr;
+		u8 mask;
+	} fifo_diff;
 };
 
 /**
@@ -213,6 +246,7 @@ struct st_sensor_transfer_function {
  * @bdu: Block data update register.
  * @das: Data Alignment Selection register.
  * @drdy_irq: Data ready register of the sensor.
+ * @fifo_ops: Sensor hw FIFO parameters.
  * @sim: SPI serial interface mode register of the sensor.
  * @multi_read_bit: Use or not particular bit for [I2C/SPI] multi-read.
  * @bootime: samples to discard when sensor passing from power-down to power-up.
@@ -230,6 +264,7 @@ struct st_sensor_settings {
 	struct st_sensor_bdu bdu;
 	struct st_sensor_das das;
 	struct st_sensor_data_ready_irq drdy_irq;
+	struct st_sensor_fifo_ops fifo_ops;
 	struct st_sensor_sim sim;
 	bool multi_read_bit;
 	unsigned int bootime;
@@ -326,6 +361,8 @@ int st_sensors_debugfs_reg_access(struct iio_dev *indio_dev,
 				  unsigned *readval);
 
 int st_sensors_set_odr(struct iio_dev *indio_dev, unsigned int odr);
+
+int st_sensors_set_watermark(struct iio_dev *indio_dev, unsigned int val);
 
 int st_sensors_set_dataready_irq(struct iio_dev *indio_dev, bool enable);
 

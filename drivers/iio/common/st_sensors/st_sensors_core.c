@@ -87,6 +87,33 @@ st_sensors_match_odr_error:
 	return ret;
 }
 
+int st_sensors_set_watermark(struct iio_dev *indio_dev, unsigned int val)
+{
+	struct st_sensor_data *sdata = iio_priv(indio_dev);
+	struct st_sensor_fifo_ops *fifo_ops;
+	int err;
+
+	fifo_ops = &sdata->sensor_settings->fifo_ops;
+	if (!fifo_ops->fifo_th.addr)
+		return -EOPNOTSUPP;
+
+	if (val < 1 || val > fifo_ops->max_fifo_size)
+		return -EINVAL;
+
+	err = iio_device_claim_direct_mode(indio_dev);
+	if (err < 0)
+		return err;
+
+	err = st_sensors_write_data_with_mask(indio_dev,
+					      fifo_ops->fifo_th.addr,
+					      fifo_ops->fifo_th.mask,
+					      val);
+	iio_device_release_direct_mode(indio_dev);
+
+	return err;
+}
+EXPORT_SYMBOL(st_sensors_set_watermark);
+
 int st_sensors_set_odr(struct iio_dev *indio_dev, unsigned int odr)
 {
 	int err;
@@ -181,6 +208,7 @@ int st_sensors_set_enable(struct iio_dev *indio_dev, bool enable)
 	bool found = false;
 	struct st_sensor_odr_avl odr_out = {0, 0};
 	struct st_sensor_data *sdata = iio_priv(indio_dev);
+	struct st_sensor_fifo_ops *fifo_ops;
 
 	if (enable) {
 		tmp_value = sdata->sensor_settings->pw.value_on;
@@ -214,6 +242,16 @@ int st_sensors_set_enable(struct iio_dev *indio_dev, bool enable)
 			goto set_enable_error;
 
 		sdata->enabled = false;
+	}
+
+	fifo_ops = &sdata->sensor_settings->fifo_ops;
+	if (fifo_ops->fifo_mode.addr) {
+		int val;
+
+		val = enable ? ST_SENSOR_FIFO_STREAM : ST_SENSOR_FIFO_BYPASS;
+		err = st_sensors_write_data_with_mask(indio_dev,
+				fifo_ops->fifo_mode.addr,
+				fifo_ops->fifo_mode.mask, val);
 	}
 
 set_enable_error:
@@ -397,6 +435,7 @@ int st_sensors_init_sensor(struct iio_dev *indio_dev,
 {
 	struct st_sensor_data *sdata = iio_priv(indio_dev);
 	struct st_sensors_platform_data *of_pdata;
+	struct st_sensor_fifo_ops *fifo_ops;
 	int err = 0;
 
 	/* If OF/DT pdata exists, it will take precedence of anything else */
@@ -470,7 +509,15 @@ int st_sensors_init_sensor(struct iio_dev *indio_dev,
 	}
 
 	err = st_sensors_set_axis_enable(indio_dev, ST_SENSORS_ENABLE_ALL_AXIS);
+	if (err < 0)
+		return err;
 
+	/* init FIFO watermark if supported */
+	fifo_ops = &sdata->sensor_settings->fifo_ops;
+	if (fifo_ops->fifo_th.addr)
+		err = st_sensors_write_data_with_mask(indio_dev,
+					fifo_ops->fifo_th.addr,
+					fifo_ops->fifo_th.mask, 1);
 	return err;
 }
 EXPORT_SYMBOL(st_sensors_init_sensor);
@@ -480,6 +527,7 @@ int st_sensors_set_dataready_irq(struct iio_dev *indio_dev, bool enable)
 	int err;
 	u8 drdy_addr, drdy_mask;
 	struct st_sensor_data *sdata = iio_priv(indio_dev);
+	struct st_sensor_int_drdy *drdy_data;
 
 	if (!sdata->sensor_settings->drdy_irq.int1.addr &&
 	    !sdata->sensor_settings->drdy_irq.int2.addr) {
@@ -504,12 +552,18 @@ int st_sensors_set_dataready_irq(struct iio_dev *indio_dev, bool enable)
 			goto st_accel_set_dataready_irq_error;
 	}
 
-	if (sdata->drdy_int_pin == 1) {
-		drdy_addr = sdata->sensor_settings->drdy_irq.int1.addr;
-		drdy_mask = sdata->sensor_settings->drdy_irq.int1.mask;
+	if (sdata->drdy_int_pin == 1)
+		drdy_data = &sdata->sensor_settings->drdy_irq.int1;
+	else
+		drdy_data = &sdata->sensor_settings->drdy_irq.int2;
+
+	if (drdy_data->fifo_drdy.addr) {
+		/* use hw FIFO if available */
+		drdy_addr = drdy_data->fifo_drdy.addr;
+		drdy_mask = drdy_data->fifo_drdy.mask;
 	} else {
-		drdy_addr = sdata->sensor_settings->drdy_irq.int2.addr;
-		drdy_mask = sdata->sensor_settings->drdy_irq.int2.mask;
+		drdy_addr = drdy_data->addr;
+		drdy_mask = drdy_data->mask;
 	}
 
 	/* Flag to the poll function that the hardware trigger is in use */
