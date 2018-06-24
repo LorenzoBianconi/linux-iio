@@ -345,6 +345,9 @@ static inline void st_sensors_deallocate_trigger(struct iio_dev *indio_dev)
 #define st_sensors_validate_device NULL
 #endif
 
+int st_sensors_fifo_setup(struct iio_dev *indio_dev,
+			  const struct iio_buffer_setup_ops *buffer_ops);
+
 int st_sensors_init_sensor(struct iio_dev *indio_dev,
 					struct st_sensors_platform_data *pdata);
 

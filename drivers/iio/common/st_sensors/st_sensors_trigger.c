@@ -14,6 +14,8 @@
 #include <linux/iio/iio.h>
 #include <linux/iio/trigger.h>
 #include <linux/interrupt.h>
+#include <linux/iio/kfifo_buf.h>
+#include <linux/iio/buffer.h>
 #include <linux/iio/common/st_sensors.h>
 #include "st_sensors_core.h"
 
@@ -116,6 +118,11 @@ static irqreturn_t st_sensors_irq_thread(int irq, void *p)
 		iio_trigger_poll_chained(p);
 	}
 
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t st_sensors_irq_fifo_thread(int irq, void *p)
+{
 	return IRQ_HANDLED;
 }
 
@@ -249,6 +256,44 @@ iio_trigger_free:
 	return err;
 }
 EXPORT_SYMBOL(st_sensors_allocate_trigger);
+
+int st_sensors_fifo_setup(struct iio_dev *indio_dev,
+			  const struct iio_buffer_setup_ops *buffer_ops)
+{
+	struct st_sensor_data *sdata = iio_priv(indio_dev);
+	struct iio_buffer *buffer;
+	unsigned long irq_trig;
+	int err, irq;
+
+	irq = sdata->get_irq_data_ready(indio_dev);
+	irq_trig = irqd_get_trigger_type(irq_get_irq_data(irq));
+
+	err = st_sensors_config_irqline(indio_dev, &irq_trig);
+	if (err < 0)
+		return err;
+
+	err = devm_request_threaded_irq(sdata->dev, irq,
+					st_sensors_irq_handler,
+					st_sensors_irq_fifo_thread,
+					irq_trig, indio_dev->name,
+					indio_dev);
+	if (err) {
+		dev_err(sdata->dev, "failed to request trigger irq %d\n",
+			irq);
+		return err;
+	}
+
+	buffer = devm_iio_kfifo_allocate(sdata->dev);
+	if (!buffer)
+		return -ENOMEM;
+
+	iio_device_attach_buffer(indio_dev, buffer);
+	indio_dev->modes |= INDIO_BUFFER_SOFTWARE;
+	indio_dev->setup_ops = buffer_ops;
+
+	return 0;
+}
+EXPORT_SYMBOL(st_sensors_fifo_setup);
 
 void st_sensors_deallocate_trigger(struct iio_dev *indio_dev)
 {
