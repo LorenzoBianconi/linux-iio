@@ -2770,8 +2770,10 @@ static int set_spte(struct kvm_vcpu *vcpu, u64 *sptep,
 	else
 		pte_access &= ~ACC_WRITE_MASK;
 
+	if (!kvm_is_mmio_pfn(pfn))
+		spte |= shadow_me_mask;
+
 	spte |= (u64)pfn << PAGE_SHIFT;
-	spte |= shadow_me_mask;
 
 	if (pte_access & ACC_WRITE_MASK) {
 
@@ -3005,6 +3007,7 @@ static void kvm_send_hwpoison_signal(unsigned long address, struct task_struct *
 {
 	siginfo_t info;
 
+	clear_siginfo(&info);
 	info.si_signo	= SIGBUS;
 	info.si_errno	= 0;
 	info.si_code	= BUS_MCEERR_AR;

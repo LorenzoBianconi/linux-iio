@@ -151,6 +151,10 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe, __u8 request,
 
 	ret = usb_internal_control_msg(dev, pipe, dr, data, size, timeout);
 
+	/* Linger a bit, prior to the next control message. */
+	if (dev->quirks & USB_QUIRK_DELAY_CTRL_MSG)
+		msleep(200);
+
 	kfree(dr);
 
 	return ret;
@@ -936,7 +940,7 @@ int usb_set_isoch_delay(struct usb_device *dev)
 	return usb_control_msg(dev, usb_sndctrlpipe(dev, 0),
 			USB_REQ_SET_ISOCH_DELAY,
 			USB_DIR_OUT | USB_TYPE_STANDARD | USB_RECIP_DEVICE,
-			cpu_to_le16(dev->hub_delay), 0, NULL, 0,
+			dev->hub_delay, 0, NULL, 0,
 			USB_CTRL_SET_TIMEOUT);
 }
 

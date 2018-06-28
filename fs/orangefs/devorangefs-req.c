@@ -281,14 +281,17 @@ restart:
 	ret = copy_to_user(buf, &proto_ver, sizeof(__s32));
 	if (ret != 0)
 		goto error;
-	ret = copy_to_user(buf+sizeof(__s32), &magic, sizeof(__s32));
+	ret = copy_to_user(buf + sizeof(__s32), &magic, sizeof(__s32));
 	if (ret != 0)
 		goto error;
-	ret = copy_to_user(buf+2 * sizeof(__s32), &cur_op->tag, sizeof(__u64));
+	ret = copy_to_user(buf + 2 * sizeof(__s32),
+		&cur_op->tag,
+		sizeof(__u64));
 	if (ret != 0)
 		goto error;
-	ret = copy_to_user(buf+2*sizeof(__s32)+sizeof(__u64), &cur_op->upcall,
-			   sizeof(struct orangefs_upcall_s));
+	ret = copy_to_user(buf + 2 * sizeof(__s32) + sizeof(__u64),
+		&cur_op->upcall,
+		sizeof(struct orangefs_upcall_s));
 	if (ret != 0)
 		goto error;
 
@@ -381,7 +384,7 @@ static ssize_t orangefs_devreq_write_iter(struct kiocb *iocb,
 			   (unsigned int) MAX_DEV_REQ_DOWNSIZE);
 		return -EFAULT;
 	}
-     
+
 	if (!copy_from_iter_full(&head, head_size, iter)) {
 		gossip_err("%s: failed to copy head.\n", __func__);
 		return -EFAULT;
@@ -426,7 +429,7 @@ static ssize_t orangefs_devreq_write_iter(struct kiocb *iocb,
 		goto wakeup;
 
 	/*
-	 * We've successfully peeled off the head and the downcall. 
+	 * We've successfully peeled off the head and the downcall.
 	 * Something has gone awry if total doesn't equal the
 	 * sum of head_size, downcall_size and trailer_size.
 	 */
@@ -463,11 +466,10 @@ static ssize_t orangefs_devreq_write_iter(struct kiocb *iocb,
 	if (op->downcall.type != ORANGEFS_VFS_OP_READDIR)
 		goto wakeup;
 
-	op->downcall.trailer_buf = vmalloc(op->downcall.trailer_size);
+	op->downcall.trailer_buf = vzalloc(op->downcall.trailer_size);
 	if (!op->downcall.trailer_buf)
 		goto Enomem;
 
-	memset(op->downcall.trailer_buf, 0, op->downcall.trailer_size);
 	if (!copy_from_iter_full(op->downcall.trailer_buf,
 			         op->downcall.trailer_size, iter)) {
 		gossip_err("%s: failed to copy trailer.\n", __func__);
@@ -478,7 +480,7 @@ static ssize_t orangefs_devreq_write_iter(struct kiocb *iocb,
 wakeup:
 	/*
 	 * Return to vfs waitqueue, and back to service_operation
-	 * through wait_for_matching_downcall. 
+	 * through wait_for_matching_downcall.
 	 */
 	spin_lock(&op->lock);
 	if (unlikely(op_is_cancel(op))) {
@@ -779,8 +781,34 @@ static long orangefs_devreq_compat_ioctl(struct file *filp, unsigned int cmd,
 
 #endif /* CONFIG_COMPAT is in .config */
 
+static __poll_t orangefs_devreq_poll(struct file *file,
+				      struct poll_table_struct *poll_table)
+{
+	__poll_t poll_revent_mask = 0;
+
+	poll_wait(file, &orangefs_request_list_waitq, poll_table);
+
+	if (!list_empty(&orangefs_request_list))
+		poll_revent_mask |= EPOLLIN;
+	return poll_revent_mask;
+}
+
 /* the assigned character device major number */
 static int orangefs_dev_major;
+
+static const struct file_operations orangefs_devreq_file_operations = {
+	.owner = THIS_MODULE,
+	.read = orangefs_devreq_read,
+	.write_iter = orangefs_devreq_write_iter,
+	.open = orangefs_devreq_open,
+	.release = orangefs_devreq_release,
+	.unlocked_ioctl = orangefs_devreq_ioctl,
+
+#ifdef CONFIG_COMPAT		/* CONFIG_COMPAT is in .config */
+	.compat_ioctl = orangefs_devreq_compat_ioctl,
+#endif
+	.poll = orangefs_devreq_poll
+};
 
 /*
  * Initialize orangefs device specific state:
@@ -814,29 +842,3 @@ void orangefs_dev_cleanup(void)
 		     "*** /dev/%s character device unregistered ***\n",
 		     ORANGEFS_REQDEVICE_NAME);
 }
-
-static __poll_t orangefs_devreq_poll(struct file *file,
-				      struct poll_table_struct *poll_table)
-{
-	__poll_t poll_revent_mask = 0;
-
-	poll_wait(file, &orangefs_request_list_waitq, poll_table);
-
-	if (!list_empty(&orangefs_request_list))
-		poll_revent_mask |= EPOLLIN;
-	return poll_revent_mask;
-}
-
-const struct file_operations orangefs_devreq_file_operations = {
-	.owner = THIS_MODULE,
-	.read = orangefs_devreq_read,
-	.write_iter = orangefs_devreq_write_iter,
-	.open = orangefs_devreq_open,
-	.release = orangefs_devreq_release,
-	.unlocked_ioctl = orangefs_devreq_ioctl,
-
-#ifdef CONFIG_COMPAT		/* CONFIG_COMPAT is in .config */
-	.compat_ioctl = orangefs_devreq_compat_ioctl,
-#endif
-	.poll = orangefs_devreq_poll
-};

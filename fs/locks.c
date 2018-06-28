@@ -559,7 +559,7 @@ static const struct lock_manager_operations lease_manager_ops = {
  * Initialize a lease, use the default lock manager operations
  */
 static int lease_init(struct file *filp, long type, struct file_lock *fl)
- {
+{
 	if (assign_type(fl, type) != 0)
 		return -EINVAL;
 
@@ -2788,22 +2788,10 @@ static const struct seq_operations locks_seq_operations = {
 	.show	= locks_show,
 };
 
-static int locks_open(struct inode *inode, struct file *filp)
-{
-	return seq_open_private(filp, &locks_seq_operations,
-					sizeof(struct locks_iterator));
-}
-
-static const struct file_operations proc_locks_operations = {
-	.open		= locks_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= seq_release_private,
-};
-
 static int __init proc_locks_init(void)
 {
-	proc_create("locks", 0, NULL, &proc_locks_operations);
+	proc_create_seq_private("locks", 0, NULL, &locks_seq_operations,
+			sizeof(struct locks_iterator), NULL);
 	return 0;
 }
 fs_initcall(proc_locks_init);

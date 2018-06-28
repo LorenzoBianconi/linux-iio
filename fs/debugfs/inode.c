@@ -270,10 +270,7 @@ struct dentry *debugfs_lookup(const char *name, struct dentry *parent)
 	if (!parent)
 		parent = debugfs_mount->mnt_root;
 
-	inode_lock(d_inode(parent));
-	dentry = lookup_one_len(name, parent, strlen(name));
-	inode_unlock(d_inode(parent));
-
+	dentry = lookup_one_len_unlocked(name, parent, strlen(name));
 	if (IS_ERR(dentry))
 		return NULL;
 	if (!d_really_is_positive(dentry)) {
@@ -515,7 +512,9 @@ struct dentry *debugfs_create_dir(const char *name, struct dentry *parent)
 	if (unlikely(!inode))
 		return failed_creating(dentry);
 
-	inode->i_mode = S_IFDIR | S_IRWXU | S_IRUGO | S_IXUGO;
+	if (!parent)
+		parent = debugfs_mount->mnt_root;
+	inode->i_mode = S_IFDIR | ((d_inode(parent)->i_mode & 0770));
 	inode->i_op = &simple_dir_inode_operations;
 	inode->i_fop = &simple_dir_operations;
 

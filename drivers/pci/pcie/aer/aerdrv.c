@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * drivers/pci/pcie/aer/aerdrv.c
- *
- * This file implements the AER root port service driver. The driver will
- * register an irq handler. When root port triggers an AER interrupt, the irq
- * handler will collect root port status and schedule a work.
+ * Implement the AER root port service driver. The driver registers an IRQ
+ * handler. When a root port triggers an AER interrupt, the IRQ handler
+ * collects root port status and schedules work.
  *
  * Copyright (C) 2006 Intel Corp.
  *	Tom Long Nguyen (tom.l.nguyen@intel.com)
  *	Zhang Yanmin (yanmin.zhang@intel.com)
- *
  */
 
 #include <linux/pci.h>
@@ -21,7 +18,6 @@
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
-#include <linux/pcieport_if.h>
 #include <linux/slab.h>
 
 #include "aerdrv.h"
@@ -98,7 +94,7 @@ static void set_downstream_devices_error_reporting(struct pci_dev *dev,
  */
 static void aer_enable_rootport(struct aer_rpc *rpc)
 {
-	struct pci_dev *pdev = rpc->rpd->port;
+	struct pci_dev *pdev = rpc->rpd;
 	int aer_pos;
 	u16 reg16;
 	u32 reg32;
@@ -140,7 +136,7 @@ static void aer_enable_rootport(struct aer_rpc *rpc)
  */
 static void aer_disable_rootport(struct aer_rpc *rpc)
 {
-	struct pci_dev *pdev = rpc->rpd->port;
+	struct pci_dev *pdev = rpc->rpd;
 	u32 reg32;
 	int pos;
 
@@ -236,7 +232,7 @@ static struct aer_rpc *aer_alloc_rpc(struct pcie_device *dev)
 	/* Initialize Root lock access, e_lock, to Root Error Status Reg */
 	spin_lock_init(&rpc->e_lock);
 
-	rpc->rpd = dev;
+	rpc->rpd = dev->port;
 	INIT_WORK(&rpc->dpc_handler, aer_isr);
 	mutex_init(&rpc->rpc_mutex);
 
@@ -357,10 +353,7 @@ static void aer_error_resume(struct pci_dev *dev)
 	pos = dev->aer_cap;
 	pci_read_config_dword(dev, pos + PCI_ERR_UNCOR_STATUS, &status);
 	pci_read_config_dword(dev, pos + PCI_ERR_UNCOR_SEVER, &mask);
-	if (dev->error_state == pci_channel_io_normal)
-		status &= ~mask; /* Clear corresponding nonfatal bits */
-	else
-		status &= mask; /* Clear corresponding fatal bits */
+	status &= ~mask; /* Clear corresponding nonfatal bits */
 	pci_write_config_dword(dev, pos + PCI_ERR_UNCOR_STATUS, status);
 }
 

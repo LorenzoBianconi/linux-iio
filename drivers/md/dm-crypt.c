@@ -143,12 +143,14 @@ struct crypt_config {
 	 * pool for per bio private data, crypto requests,
 	 * encryption requeusts/buffer pages and integrity tags
 	 */
-	mempool_t *req_pool;
-	mempool_t *page_pool;
-	mempool_t *tag_pool;
+	mempool_t req_pool;
+	mempool_t page_pool;
+	mempool_t tag_pool;
 	unsigned tag_pool_max_sectors;
 
-	struct bio_set *bs;
+	struct percpu_counter n_allocated_pages;
+
+	struct bio_set bs;
 	struct mutex bio_alloc_lock;
 
 	struct workqueue_struct *io_queue;
@@ -218,6 +220,12 @@ struct crypt_config {
 #define MIN_IOS		64
 #define MAX_TAG_SIZE	480
 #define POOL_ENTRY_SIZE	512
+
+static DEFINE_SPINLOCK(dm_crypt_clients_lock);
+static unsigned dm_crypt_clients_n = 0;
+static volatile unsigned long dm_crypt_pages_per_client;
+#define DM_CRYPT_MEMORY_PERCENT			2
+#define DM_CRYPT_MIN_PAGES_PER_CLIENT		(BIO_MAX_PAGES * 16)
 
 static void clone_init(struct dm_crypt_io *, struct bio *);
 static void kcryptd_queue_crypt(struct dm_crypt_io *io);
@@ -1237,7 +1245,7 @@ static void crypt_alloc_req_skcipher(struct crypt_config *cc,
 	unsigned key_index = ctx->cc_sector & (cc->tfms_count - 1);
 
 	if (!ctx->r.req)
-		ctx->r.req = mempool_alloc(cc->req_pool, GFP_NOIO);
+		ctx->r.req = mempool_alloc(&cc->req_pool, GFP_NOIO);
 
 	skcipher_request_set_tfm(ctx->r.req, cc->cipher_tfm.tfms[key_index]);
 
@@ -1254,7 +1262,7 @@ static void crypt_alloc_req_aead(struct crypt_config *cc,
 				 struct convert_context *ctx)
 {
 	if (!ctx->r.req_aead)
-		ctx->r.req_aead = mempool_alloc(cc->req_pool, GFP_NOIO);
+		ctx->r.req_aead = mempool_alloc(&cc->req_pool, GFP_NOIO);
 
 	aead_request_set_tfm(ctx->r.req_aead, cc->cipher_tfm.tfms_aead[0]);
 
@@ -1282,7 +1290,7 @@ static void crypt_free_req_skcipher(struct crypt_config *cc,
 	struct dm_crypt_io *io = dm_per_bio_data(base_bio, cc->per_bio_data_size);
 
 	if ((struct skcipher_request *)(io + 1) != req)
-		mempool_free(req, cc->req_pool);
+		mempool_free(req, &cc->req_pool);
 }
 
 static void crypt_free_req_aead(struct crypt_config *cc,
@@ -1291,7 +1299,7 @@ static void crypt_free_req_aead(struct crypt_config *cc,
 	struct dm_crypt_io *io = dm_per_bio_data(base_bio, cc->per_bio_data_size);
 
 	if ((struct aead_request *)(io + 1) != req)
-		mempool_free(req, cc->req_pool);
+		mempool_free(req, &cc->req_pool);
 }
 
 static void crypt_free_req(struct crypt_config *cc, void *req, struct bio *base_bio)
@@ -1401,7 +1409,7 @@ retry:
 	if (unlikely(gfp_mask & __GFP_DIRECT_RECLAIM))
 		mutex_lock(&cc->bio_alloc_lock);
 
-	clone = bio_alloc_bioset(GFP_NOIO, nr_iovecs, cc->bs);
+	clone = bio_alloc_bioset(GFP_NOIO, nr_iovecs, &cc->bs);
 	if (!clone)
 		goto out;
 
@@ -1410,7 +1418,7 @@ retry:
 	remaining_size = size;
 
 	for (i = 0; i < nr_iovecs; i++) {
-		page = mempool_alloc(cc->page_pool, gfp_mask);
+		page = mempool_alloc(&cc->page_pool, gfp_mask);
 		if (!page) {
 			crypt_free_buffer_pages(cc, clone);
 			bio_put(clone);
@@ -1445,7 +1453,7 @@ static void crypt_free_buffer_pages(struct crypt_config *cc, struct bio *clone)
 
 	bio_for_each_segment_all(bv, clone, i) {
 		BUG_ON(!bv->bv_page);
-		mempool_free(bv->bv_page, cc->page_pool);
+		mempool_free(bv->bv_page, &cc->page_pool);
 	}
 }
 
@@ -1484,7 +1492,7 @@ static void crypt_dec_pending(struct dm_crypt_io *io)
 		crypt_free_req(cc, io->ctx.r.req, base_bio);
 
 	if (unlikely(io->integrity_metadata_from_pool))
-		mempool_free(io->integrity_metadata, io->cc->tag_pool);
+		mempool_free(io->integrity_metadata, &io->cc->tag_pool);
 	else
 		kfree(io->integrity_metadata);
 
@@ -1557,7 +1565,7 @@ static int kcryptd_io_read(struct dm_crypt_io *io, gfp_t gfp)
 	 * biovecs we don't need to worry about the block layer
 	 * modifying the biovec array; so leverage bio_clone_fast().
 	 */
-	clone = bio_clone_fast(io->base_bio, gfp, cc->bs);
+	clone = bio_clone_fast(io->base_bio, gfp, &cc->bs);
 	if (!clone)
 		return 1;
 
@@ -2155,6 +2163,43 @@ static int crypt_wipe_key(struct crypt_config *cc)
 	return r;
 }
 
+static void crypt_calculate_pages_per_client(void)
+{
+	unsigned long pages = (totalram_pages - totalhigh_pages) * DM_CRYPT_MEMORY_PERCENT / 100;
+
+	if (!dm_crypt_clients_n)
+		return;
+
+	pages /= dm_crypt_clients_n;
+	if (pages < DM_CRYPT_MIN_PAGES_PER_CLIENT)
+		pages = DM_CRYPT_MIN_PAGES_PER_CLIENT;
+	dm_crypt_pages_per_client = pages;
+}
+
+static void *crypt_page_alloc(gfp_t gfp_mask, void *pool_data)
+{
+	struct crypt_config *cc = pool_data;
+	struct page *page;
+
+	if (unlikely(percpu_counter_compare(&cc->n_allocated_pages, dm_crypt_pages_per_client) >= 0) &&
+	    likely(gfp_mask & __GFP_NORETRY))
+		return NULL;
+
+	page = alloc_page(gfp_mask);
+	if (likely(page != NULL))
+		percpu_counter_add(&cc->n_allocated_pages, 1);
+
+	return page;
+}
+
+static void crypt_page_free(void *page, void *pool_data)
+{
+	struct crypt_config *cc = pool_data;
+
+	__free_page(page);
+	percpu_counter_sub(&cc->n_allocated_pages, 1);
+}
+
 static void crypt_dtr(struct dm_target *ti)
 {
 	struct crypt_config *cc = ti->private;
@@ -2174,12 +2219,14 @@ static void crypt_dtr(struct dm_target *ti)
 
 	crypt_free_tfms(cc);
 
-	if (cc->bs)
-		bioset_free(cc->bs);
+	bioset_exit(&cc->bs);
 
-	mempool_destroy(cc->page_pool);
-	mempool_destroy(cc->req_pool);
-	mempool_destroy(cc->tag_pool);
+	mempool_exit(&cc->page_pool);
+	mempool_exit(&cc->req_pool);
+	mempool_exit(&cc->tag_pool);
+
+	WARN_ON(percpu_counter_sum(&cc->n_allocated_pages) != 0);
+	percpu_counter_destroy(&cc->n_allocated_pages);
 
 	if (cc->iv_gen_ops && cc->iv_gen_ops->dtr)
 		cc->iv_gen_ops->dtr(cc);
@@ -2197,6 +2244,12 @@ static void crypt_dtr(struct dm_target *ti)
 
 	/* Must zero key material before freeing */
 	kzfree(cc);
+
+	spin_lock(&dm_crypt_clients_lock);
+	WARN_ON(!dm_crypt_clients_n);
+	dm_crypt_clients_n--;
+	crypt_calculate_pages_per_client();
+	spin_unlock(&dm_crypt_clients_lock);
 }
 
 static int crypt_ctr_ivmode(struct dm_target *ti, const char *ivmode)
@@ -2644,6 +2697,15 @@ static int crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 
 	ti->private = cc;
 
+	spin_lock(&dm_crypt_clients_lock);
+	dm_crypt_clients_n++;
+	crypt_calculate_pages_per_client();
+	spin_unlock(&dm_crypt_clients_lock);
+
+	ret = percpu_counter_init(&cc->n_allocated_pages, 0, GFP_KERNEL);
+	if (ret < 0)
+		goto bad;
+
 	/* Optional parameters need to be read before cipher constructor */
 	if (argc > 5) {
 		ret = crypt_ctr_optional(ti, argc - 5, &argv[5]);
@@ -2679,8 +2741,6 @@ static int crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		iv_size_padding = align_mask;
 	}
 
-	ret = -ENOMEM;
-
 	/*  ...| IV + padding | original IV | original sec. number | bio tag offset | */
 	additional_req_size = sizeof(struct dm_crypt_request) +
 		iv_size_padding + cc->iv_size +
@@ -2688,8 +2748,8 @@ static int crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		sizeof(uint64_t) +
 		sizeof(unsigned int);
 
-	cc->req_pool = mempool_create_kmalloc_pool(MIN_IOS, cc->dmreq_start + additional_req_size);
-	if (!cc->req_pool) {
+	ret = mempool_init_kmalloc_pool(&cc->req_pool, MIN_IOS, cc->dmreq_start + additional_req_size);
+	if (ret) {
 		ti->error = "Cannot allocate crypt request mempool";
 		goto bad;
 	}
@@ -2698,14 +2758,14 @@ static int crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		ALIGN(sizeof(struct dm_crypt_io) + cc->dmreq_start + additional_req_size,
 		      ARCH_KMALLOC_MINALIGN);
 
-	cc->page_pool = mempool_create_page_pool(BIO_MAX_PAGES, 0);
-	if (!cc->page_pool) {
+	ret = mempool_init(&cc->page_pool, BIO_MAX_PAGES, crypt_page_alloc, crypt_page_free, cc);
+	if (ret) {
 		ti->error = "Cannot allocate page mempool";
 		goto bad;
 	}
 
-	cc->bs = bioset_create(MIN_IOS, 0, BIOSET_NEED_BVECS);
-	if (!cc->bs) {
+	ret = bioset_init(&cc->bs, MIN_IOS, 0, BIOSET_NEED_BVECS);
+	if (ret) {
 		ti->error = "Cannot allocate crypt bioset";
 		goto bad;
 	}
@@ -2742,11 +2802,10 @@ static int crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		if (!cc->tag_pool_max_sectors)
 			cc->tag_pool_max_sectors = 1;
 
-		cc->tag_pool = mempool_create_kmalloc_pool(MIN_IOS,
+		ret = mempool_init_kmalloc_pool(&cc->tag_pool, MIN_IOS,
 			cc->tag_pool_max_sectors * cc->on_disk_tag_size);
-		if (!cc->tag_pool) {
+		if (ret) {
 			ti->error = "Cannot allocate integrity tags mempool";
-			ret = -ENOMEM;
 			goto bad;
 		}
 
@@ -2839,7 +2898,7 @@ static int crypt_map(struct dm_target *ti, struct bio *bio)
 				GFP_NOIO | __GFP_NORETRY | __GFP_NOMEMALLOC | __GFP_NOWARN)))) {
 			if (bio_sectors(bio) > cc->tag_pool_max_sectors)
 				dm_accept_partial_bio(bio, cc->tag_pool_max_sectors);
-			io->integrity_metadata = mempool_alloc(cc->tag_pool, GFP_NOIO);
+			io->integrity_metadata = mempool_alloc(&cc->tag_pool, GFP_NOIO);
 			io->integrity_metadata_from_pool = true;
 		}
 	}
@@ -2942,7 +3001,8 @@ static void crypt_resume(struct dm_target *ti)
  *	key set <key>
  *	key wipe
  */
-static int crypt_message(struct dm_target *ti, unsigned argc, char **argv)
+static int crypt_message(struct dm_target *ti, unsigned argc, char **argv,
+			 char *result, unsigned maxlen)
 {
 	struct crypt_config *cc = ti->private;
 	int key_size, ret = -EINVAL;

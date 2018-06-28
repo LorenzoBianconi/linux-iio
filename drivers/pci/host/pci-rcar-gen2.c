@@ -21,6 +21,8 @@
 #include <linux/sizes.h>
 #include <linux/slab.h>
 
+#include "../pci.h"
+
 /* AHB-PCI Bridge PCI communication registers */
 #define RCAR_AHBPCI_PCICOM_OFFSET	0x800
 
@@ -52,7 +54,6 @@
 #define RCAR_PCI_INT_B			(1 << 17)
 #define RCAR_PCI_INT_PME		(1 << 19)
 #define RCAR_PCI_INT_ALLERRORS (RCAR_PCI_INT_SIGTABORT		| \
-				RCAR_PCI_INT_SIGRETABORT	| \
 				RCAR_PCI_INT_SIGRETABORT	| \
 				RCAR_PCI_INT_REMABORT		| \
 				RCAR_PCI_INT_PERR		| \

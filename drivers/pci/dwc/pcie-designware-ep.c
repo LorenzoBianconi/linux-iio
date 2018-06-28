@@ -19,7 +19,8 @@ void dw_pcie_ep_linkup(struct dw_pcie_ep *ep)
 	pci_epc_linkup(epc);
 }
 
-void dw_pcie_ep_reset_bar(struct dw_pcie *pci, enum pci_barno bar)
+static void __dw_pcie_ep_reset_bar(struct dw_pcie *pci, enum pci_barno bar,
+				   int flags)
 {
 	u32 reg;
 
@@ -27,7 +28,16 @@ void dw_pcie_ep_reset_bar(struct dw_pcie *pci, enum pci_barno bar)
 	dw_pcie_dbi_ro_wr_en(pci);
 	dw_pcie_writel_dbi2(pci, reg, 0x0);
 	dw_pcie_writel_dbi(pci, reg, 0x0);
+	if (flags & PCI_BASE_ADDRESS_MEM_TYPE_64) {
+		dw_pcie_writel_dbi2(pci, reg + 4, 0x0);
+		dw_pcie_writel_dbi(pci, reg + 4, 0x0);
+	}
 	dw_pcie_dbi_ro_wr_dis(pci);
+}
+
+void dw_pcie_ep_reset_bar(struct dw_pcie *pci, enum pci_barno bar)
+{
+	__dw_pcie_ep_reset_bar(pci, bar, 0);
 }
 
 static int dw_pcie_ep_write_header(struct pci_epc *epc, u8 func_no,
@@ -65,7 +75,7 @@ static int dw_pcie_ep_inbound_atu(struct dw_pcie_ep *ep, enum pci_barno bar,
 
 	free_win = find_first_zero_bit(ep->ib_window_map, ep->num_ib_windows);
 	if (free_win >= ep->num_ib_windows) {
-		dev_err(pci->dev, "no free inbound window\n");
+		dev_err(pci->dev, "No free inbound window\n");
 		return -EINVAL;
 	}
 
@@ -90,7 +100,7 @@ static int dw_pcie_ep_outbound_atu(struct dw_pcie_ep *ep, phys_addr_t phys_addr,
 
 	free_win = find_first_zero_bit(ep->ob_window_map, ep->num_ob_windows);
 	if (free_win >= ep->num_ob_windows) {
-		dev_err(pci->dev, "no free outbound window\n");
+		dev_err(pci->dev, "No free outbound window\n");
 		return -EINVAL;
 	}
 
@@ -104,25 +114,28 @@ static int dw_pcie_ep_outbound_atu(struct dw_pcie_ep *ep, phys_addr_t phys_addr,
 }
 
 static void dw_pcie_ep_clear_bar(struct pci_epc *epc, u8 func_no,
-				 enum pci_barno bar)
+				 struct pci_epf_bar *epf_bar)
 {
 	struct dw_pcie_ep *ep = epc_get_drvdata(epc);
 	struct dw_pcie *pci = to_dw_pcie_from_ep(ep);
+	enum pci_barno bar = epf_bar->barno;
 	u32 atu_index = ep->bar_to_atu[bar];
 
-	dw_pcie_ep_reset_bar(pci, bar);
+	__dw_pcie_ep_reset_bar(pci, bar, epf_bar->flags);
 
 	dw_pcie_disable_atu(pci, atu_index, DW_PCIE_REGION_INBOUND);
 	clear_bit(atu_index, ep->ib_window_map);
 }
 
 static int dw_pcie_ep_set_bar(struct pci_epc *epc, u8 func_no,
-			      enum pci_barno bar,
-			      dma_addr_t bar_phys, size_t size, int flags)
+			      struct pci_epf_bar *epf_bar)
 {
 	int ret;
 	struct dw_pcie_ep *ep = epc_get_drvdata(epc);
 	struct dw_pcie *pci = to_dw_pcie_from_ep(ep);
+	enum pci_barno bar = epf_bar->barno;
+	size_t size = epf_bar->size;
+	int flags = epf_bar->flags;
 	enum dw_pcie_as_type as_type;
 	u32 reg = PCI_BASE_ADDRESS_0 + (4 * bar);
 
@@ -131,13 +144,20 @@ static int dw_pcie_ep_set_bar(struct pci_epc *epc, u8 func_no,
 	else
 		as_type = DW_PCIE_AS_IO;
 
-	ret = dw_pcie_ep_inbound_atu(ep, bar, bar_phys, as_type);
+	ret = dw_pcie_ep_inbound_atu(ep, bar, epf_bar->phys_addr, as_type);
 	if (ret)
 		return ret;
 
 	dw_pcie_dbi_ro_wr_en(pci);
-	dw_pcie_writel_dbi2(pci, reg, size - 1);
+
+	dw_pcie_writel_dbi2(pci, reg, lower_32_bits(size - 1));
 	dw_pcie_writel_dbi(pci, reg, flags);
+
+	if (flags & PCI_BASE_ADDRESS_MEM_TYPE_64) {
+		dw_pcie_writel_dbi2(pci, reg + 4, upper_32_bits(size - 1));
+		dw_pcie_writel_dbi(pci, reg + 4, 0);
+	}
+
 	dw_pcie_dbi_ro_wr_dis(pci);
 
 	return 0;
@@ -184,7 +204,7 @@ static int dw_pcie_ep_map_addr(struct pci_epc *epc, u8 func_no,
 
 	ret = dw_pcie_ep_outbound_atu(ep, addr, pci_addr, size);
 	if (ret) {
-		dev_err(pci->dev, "failed to enable address\n");
+		dev_err(pci->dev, "Failed to enable address\n");
 		return ret;
 	}
 
@@ -322,27 +342,27 @@ int dw_pcie_ep_init(struct dw_pcie_ep *ep)
 	struct device_node *np = dev->of_node;
 
 	if (!pci->dbi_base || !pci->dbi_base2) {
-		dev_err(dev, "dbi_base/deb_base2 is not populated\n");
+		dev_err(dev, "dbi_base/dbi_base2 is not populated\n");
 		return -EINVAL;
 	}
 
 	ret = of_property_read_u32(np, "num-ib-windows", &ep->num_ib_windows);
 	if (ret < 0) {
-		dev_err(dev, "unable to read *num-ib-windows* property\n");
+		dev_err(dev, "Unable to read *num-ib-windows* property\n");
 		return ret;
 	}
 	if (ep->num_ib_windows > MAX_IATU_IN) {
-		dev_err(dev, "invalid *num-ib-windows*\n");
+		dev_err(dev, "Invalid *num-ib-windows*\n");
 		return -EINVAL;
 	}
 
 	ret = of_property_read_u32(np, "num-ob-windows", &ep->num_ob_windows);
 	if (ret < 0) {
-		dev_err(dev, "unable to read *num-ob-windows* property\n");
+		dev_err(dev, "Unable to read *num-ob-windows* property\n");
 		return ret;
 	}
 	if (ep->num_ob_windows > MAX_IATU_OUT) {
-		dev_err(dev, "invalid *num-ob-windows*\n");
+		dev_err(dev, "Invalid *num-ob-windows*\n");
 		return -EINVAL;
 	}
 
@@ -369,7 +389,7 @@ int dw_pcie_ep_init(struct dw_pcie_ep *ep)
 
 	epc = devm_pci_epc_create(dev, &epc_ops);
 	if (IS_ERR(epc)) {
-		dev_err(dev, "failed to create epc device\n");
+		dev_err(dev, "Failed to create epc device\n");
 		return PTR_ERR(epc);
 	}
 
@@ -390,6 +410,9 @@ int dw_pcie_ep_init(struct dw_pcie_ep *ep)
 		dev_err(dev, "Failed to reserve memory for MSI\n");
 		return -ENOMEM;
 	}
+
+	epc->features = EPC_FEATURE_NO_LINKUP_NOTIFIER;
+	EPC_FEATURE_SET_BAR(epc->features, BAR_0);
 
 	ep->epc = epc;
 	epc_set_drvdata(epc, ep);

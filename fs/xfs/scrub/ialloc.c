@@ -259,7 +259,8 @@ xfs_scrub_iallocbt_check_freemask(
 
 		error = xfs_imap_to_bp(mp, bs->cur->bc_tp, &imap,
 				&dip, &bp, 0, 0);
-		if (!xfs_scrub_btree_process_error(bs->sc, bs->cur, 0, &error))
+		if (!xfs_scrub_btree_xref_process_error(bs->sc, bs->cur, 0,
+				&error))
 			continue;
 
 		/* Which inodes are free? */
@@ -386,7 +387,8 @@ xfs_scrub_iallocbt_xref_rmap_btreeblks(
 	int				error;
 
 	if (!sc->sa.ino_cur || !sc->sa.rmap_cur ||
-	    (xfs_sb_version_hasfinobt(&sc->mp->m_sb) && !sc->sa.fino_cur))
+	    (xfs_sb_version_hasfinobt(&sc->mp->m_sb) && !sc->sa.fino_cur) ||
+	    xfs_scrub_skip_xref(sc->sm))
 		return;
 
 	/* Check that we saw as many inobt blocks as the rmap says. */
@@ -423,7 +425,7 @@ xfs_scrub_iallocbt_xref_rmap_inodes(
 	xfs_filblks_t			blocks;
 	int				error;
 
-	if (!sc->sa.rmap_cur)
+	if (!sc->sa.rmap_cur || xfs_scrub_skip_xref(sc->sm))
 		return;
 
 	/* Check that we saw as many inode blocks as the rmap knows about. */
@@ -433,7 +435,7 @@ xfs_scrub_iallocbt_xref_rmap_inodes(
 	if (!xfs_scrub_should_check_xref(sc, &error, &sc->sa.rmap_cur))
 		return;
 	if (blocks != inode_blocks)
-		xfs_scrub_btree_set_corrupt(sc, sc->sa.ino_cur, 0);
+		xfs_scrub_btree_xref_set_corrupt(sc, sc->sa.rmap_cur, 0);
 }
 
 /* Scrub the inode btrees for some AG. */
@@ -495,7 +497,7 @@ xfs_scrub_xref_inode_check(
 	bool				has_inodes;
 	int				error;
 
-	if (!(*icur))
+	if (!(*icur) || xfs_scrub_skip_xref(sc->sm))
 		return;
 
 	error = xfs_ialloc_has_inodes_at_extent(*icur, agbno, len, &has_inodes);

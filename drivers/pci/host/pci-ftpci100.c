@@ -28,6 +28,8 @@
 #include <linux/irq.h>
 #include <linux/clk.h>
 
+#include "../pci.h"
+
 /*
  * Special configuration registers directly in the first few words
  * in I/O space.
@@ -476,8 +478,8 @@ static int faraday_pci_probe(struct platform_device *pdev)
 	if (IS_ERR(p->base))
 		return PTR_ERR(p->base);
 
-	ret = of_pci_get_host_bridge_resources(dev->of_node, 0, 0xff,
-					       &res, &io_base);
+	ret = devm_of_pci_get_host_bridge_resources(dev, 0, 0xff,
+						    &res, &io_base);
 	if (ret)
 		return ret;
 
@@ -586,11 +588,11 @@ static int faraday_pci_probe(struct platform_device *pdev)
  * We encode bridge variants here, we have at least two so it doesn't
  * hurt to have infrastructure to encompass future variants as well.
  */
-const struct faraday_pci_variant faraday_regular = {
+static const struct faraday_pci_variant faraday_regular = {
 	.cascaded_irq = true,
 };
 
-const struct faraday_pci_variant faraday_dual = {
+static const struct faraday_pci_variant faraday_dual = {
 	.cascaded_irq = false,
 };
 
