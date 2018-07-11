@@ -519,7 +519,7 @@ static void at91_adc_config_emr(struct at91_adc_state *st)
 		emr |= AT91_SAMA5D2_EMR_OSR(AT91_SAMA5D2_EMR_OSR_16SAMPLES) &
 		       AT91_SAMA5D2_EMR_OSR_MASK;
 		break;
-	};
+	}
 
 	at91_adc_writel(st, AT91_SAMA5D2_EMR, emr);
 }
