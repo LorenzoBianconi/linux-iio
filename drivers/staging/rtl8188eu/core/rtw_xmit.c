@@ -23,7 +23,7 @@ static void _init_txservq(struct tx_servq *ptxservq)
 	ptxservq->qcnt = 0;
 }
 
-void	_rtw_init_sta_xmit_priv(struct sta_xmit_priv *psta_xmitpriv)
+void _rtw_init_sta_xmit_priv(struct sta_xmit_priv *psta_xmitpriv)
 {
 	memset((unsigned char *)psta_xmitpriv, 0, sizeof(struct sta_xmit_priv));
 	spin_lock_init(&psta_xmitpriv->lock);
@@ -35,15 +35,14 @@ void	_rtw_init_sta_xmit_priv(struct sta_xmit_priv *psta_xmitpriv)
 	INIT_LIST_HEAD(&psta_xmitpriv->apsd);
 }
 
-s32	_rtw_init_xmit_priv(struct xmit_priv *pxmitpriv, struct adapter *padapter)
+s32 _rtw_init_xmit_priv(struct xmit_priv *pxmitpriv, struct adapter *padapter)
 {
 	int i;
 	struct xmit_buf *pxmitbuf;
 	struct xmit_frame *pxframe;
-	int	res = _SUCCESS;
+	int res = _SUCCESS;
 	u32 max_xmit_extbuf_size = MAX_XMIT_EXTBUF_SZ;
 	u32 num_xmit_extbuf = NR_XMIT_EXTBUFF;
-
 
 	/*  We don't need to memset padapter->XXX to zero, because adapter is allocated by vzalloc(). */
 
@@ -71,7 +70,7 @@ s32	_rtw_init_xmit_priv(struct xmit_priv *pxmitpriv, struct adapter *padapter)
 
 	pxmitpriv->pallocated_frame_buf = vzalloc(NR_XMITFRAME * sizeof(struct xmit_frame) + 4);
 
-	if (pxmitpriv->pallocated_frame_buf  == NULL) {
+	if (!pxmitpriv->pallocated_frame_buf) {
 		pxmitpriv->pxmit_frame_buf = NULL;
 		RT_TRACE(_module_rtl871x_xmit_c_, _drv_err_, ("alloc xmit_frame fail!\n"));
 		res = _FAIL;
@@ -109,7 +108,7 @@ s32	_rtw_init_xmit_priv(struct xmit_priv *pxmitpriv, struct adapter *padapter)
 
 	pxmitpriv->pallocated_xmitbuf = vzalloc(NR_XMITBUFF * sizeof(struct xmit_buf) + 4);
 
-	if (pxmitpriv->pallocated_xmitbuf  == NULL) {
+	if (!pxmitpriv->pallocated_xmitbuf) {
 		RT_TRACE(_module_rtl871x_xmit_c_, _drv_err_, ("alloc xmit_buf fail!\n"));
 		res = _FAIL;
 		goto exit;
@@ -150,7 +149,7 @@ s32	_rtw_init_xmit_priv(struct xmit_priv *pxmitpriv, struct adapter *padapter)
 
 	pxmitpriv->pallocated_xmit_extbuf = vzalloc(num_xmit_extbuf * sizeof(struct xmit_buf) + 4);
 
-	if (pxmitpriv->pallocated_xmit_extbuf  == NULL) {
+	if (!pxmitpriv->pallocated_xmit_extbuf) {
 		RT_TRACE(_module_rtl871x_xmit_c_, _drv_err_, ("alloc xmit_extbuf fail!\n"));
 		res = _FAIL;
 		goto exit;
@@ -200,8 +199,6 @@ s32	_rtw_init_xmit_priv(struct xmit_priv *pxmitpriv, struct adapter *padapter)
 	rtw_hal_init_xmit_priv(padapter);
 
 exit:
-
-
 	return res;
 }
 
@@ -213,7 +210,7 @@ void _rtw_free_xmit_priv(struct xmit_priv *pxmitpriv)
 	struct xmit_buf *pxmitbuf = (struct xmit_buf *)pxmitpriv->pxmitbuf;
 	u32 num_xmit_extbuf = NR_XMIT_EXTBUFF;
 
-	if (pxmitpriv->pxmit_frame_buf == NULL)
+	if (!pxmitpriv->pxmit_frame_buf)
 		return;
 
 	for (i = 0; i < NR_XMITFRAME; i++) {
@@ -585,8 +582,6 @@ static s32 update_attrib(struct adapter *padapter, struct sk_buff *pkt, struct p
 	update_attrib_phy_info(pattrib, psta);
 
 exit:
-
-
 	return res;
 }
 
@@ -607,7 +602,6 @@ static s32 xmitframe_addmic(struct adapter *padapter, struct xmit_frame *pxmitfr
 		stainfo = pattrib->psta;
 	else
 		stainfo = rtw_get_stainfo(&padapter->stapriv, &pattrib->ra[0]);
-
 
 	hw_hdr_offset = TXDESC_SIZE + (pxmitframe->pkt_offset * PACKET_OFFSET_SZ);
 
@@ -705,14 +699,12 @@ static s32 xmitframe_addmic(struct adapter *padapter, struct xmit_frame *pxmitfr
 			}
 	}
 
-
 	return _SUCCESS;
 }
 
 static s32 xmitframe_swencrypt(struct adapter *padapter, struct xmit_frame *pxmitframe)
 {
 	struct	pkt_attrib	 *pattrib = &pxmitframe->attrib;
-
 
 	if (pattrib->bswenc) {
 		RT_TRACE(_module_rtl871x_xmit_c_, _drv_alert_, ("### %s\n", __func__));
@@ -734,7 +726,6 @@ static s32 xmitframe_swencrypt(struct adapter *padapter, struct xmit_frame *pxmi
 		RT_TRACE(_module_rtl871x_xmit_c_, _drv_notice_, ("### xmitframe_hwencrypt\n"));
 	}
 
-
 	return _SUCCESS;
 }
 
@@ -753,7 +744,6 @@ s32 rtw_make_wlanhdr(struct adapter *padapter, u8 *hdr, struct pkt_attrib *pattr
 	struct sta_info *psta;
 
 	int bmcst = IS_MCAST(pattrib->ra);
-
 
 	if (pattrib->psta) {
 		psta = pattrib->psta;
@@ -903,24 +893,6 @@ s32 rtw_txframes_sta_ac_pending(struct adapter *padapter, struct pkt_attrib *pat
 }
 
 /*
- * Calculate wlan 802.11 packet MAX size from pkt_attrib
- * This function doesn't consider fragment case
- */
-u32 rtw_calculate_wlan_pkt_size_by_attribue(struct pkt_attrib *pattrib)
-{
-	u32	len = 0;
-
-	len = pattrib->hdrlen + pattrib->iv_len; /*  WLAN Header and IV */
-	len += SNAP_SIZE + sizeof(u16); /*  LLC */
-	len += pattrib->pktlen;
-	if (pattrib->encrypt == _TKIP_)
-		len += 8; /*  MIC */
-	len += ((pattrib->bswenc) ? pattrib->icv_len : 0); /*  ICV */
-
-	return len;
-}
-
-/*
 
 This sub-routine will perform all the following:
 
@@ -951,7 +923,7 @@ s32 rtw_xmitframe_coalesce(struct adapter *padapter, struct sk_buff *pkt, struct
 	if (!psta)
 		return _FAIL;
 
-	if (pxmitframe->buf_addr == NULL) {
+	if (!pxmitframe->buf_addr) {
 		DBG_88E("==> %s buf_addr == NULL\n", __func__);
 		return _FAIL;
 	}
@@ -1075,8 +1047,6 @@ s32 rtw_xmitframe_coalesce(struct adapter *padapter, struct sk_buff *pkt, struct
 		pattrib->vcs_mode = NONE_VCS;
 
 exit:
-
-
 	return res;
 }
 
@@ -1091,7 +1061,6 @@ s32 rtw_put_snap(u8 *data, u16 h_proto)
 {
 	struct ieee80211_snap_hdr *snap;
 	u8 *oui;
-
 
 	snap = (struct ieee80211_snap_hdr *)data;
 	snap->dsap = 0xaa;
@@ -1109,7 +1078,6 @@ s32 rtw_put_snap(u8 *data, u16 h_proto)
 
 	*(__be16 *)(data + SNAP_SIZE) = htons(h_proto);
 
-
 	return SNAP_SIZE + sizeof(u16);
 }
 
@@ -1119,7 +1087,6 @@ void rtw_update_protection(struct adapter *padapter, u8 *ie, uint ie_len)
 	u8	*perp;
 	struct	xmit_priv *pxmitpriv = &padapter->xmitpriv;
 	struct	registry_priv *pregistrypriv = &padapter->registrypriv;
-
 
 	switch (pxmitpriv->vcs_setting) {
 	case DISABLE_VCS:
@@ -1196,7 +1163,6 @@ s32 rtw_free_xmitbuf_ext(struct xmit_priv *pxmitpriv, struct xmit_buf *pxmitbuf)
 	unsigned long irql;
 	struct __queue *pfree_queue = &pxmitpriv->free_xmit_extbuf_queue;
 
-
 	if (!pxmitbuf)
 		return _FAIL;
 
@@ -1208,7 +1174,6 @@ s32 rtw_free_xmitbuf_ext(struct xmit_priv *pxmitpriv, struct xmit_buf *pxmitbuf)
 	pxmitpriv->free_xmit_extbuf_cnt++;
 
 	spin_unlock_irqrestore(&pfree_queue->lock, irql);
-
 
 	return _SUCCESS;
 }
@@ -1263,7 +1228,6 @@ s32 rtw_free_xmitbuf(struct xmit_priv *pxmitpriv, struct xmit_buf *pxmitbuf)
 		pxmitpriv->free_xmitbuf_cnt++;
 		spin_unlock_irqrestore(&pfree_xmitbuf_queue->lock, irql);
 	}
-
 
 	return _SUCCESS;
 }
@@ -1333,7 +1297,6 @@ s32 rtw_free_xmitframe(struct xmit_priv *pxmitpriv, struct xmit_frame *pxmitfram
 	struct adapter *padapter = pxmitpriv->adapter;
 	struct sk_buff *pndis_pkt = NULL;
 
-
 	if (!pxmitframe) {
 		RT_TRACE(_module_rtl871x_xmit_c_, _drv_err_, ("====== %s:pxmitframe == NULL!!!!!!!!!!\n", __func__));
 		goto exit;
@@ -1359,8 +1322,6 @@ s32 rtw_free_xmitframe(struct xmit_priv *pxmitpriv, struct xmit_frame *pxmitfram
 		rtw_os_pkt_complete(padapter, pndis_pkt);
 
 exit:
-
-
 	return _SUCCESS;
 }
 
@@ -1368,7 +1329,6 @@ void rtw_free_xmitframe_queue(struct xmit_priv *pxmitpriv, struct __queue *pfram
 {
 	struct list_head *plist, *phead;
 	struct	xmit_frame	*pxmitframe;
-
 
 	spin_lock_bh(&pframequeue->lock);
 
@@ -1427,7 +1387,6 @@ struct xmit_frame *rtw_dequeue_xframe(struct xmit_priv *pxmitpriv, struct hw_xmi
 	struct adapter *padapter = pxmitpriv->adapter;
 	struct registry_priv	*pregpriv = &padapter->registrypriv;
 	int i, inx[4];
-
 
 	inx[0] = 0; inx[1] = 1; inx[2] = 2; inx[3] = 3;
 
@@ -1502,7 +1461,6 @@ struct tx_servq *rtw_get_sta_pending(struct adapter *padapter, struct sta_info *
 	break;
 	}
 
-
 	return ptxservq;
 }
 
@@ -1519,7 +1477,6 @@ s32 rtw_xmit_classifier(struct adapter *padapter, struct xmit_frame *pxmitframe)
 	struct sta_priv	*pstapriv = &padapter->stapriv;
 	struct hw_xmit	*phwxmits =  padapter->xmitpriv.hwxmits;
 	int res = _SUCCESS;
-
 
 	if (pattrib->psta)
 		psta = pattrib->psta;
@@ -1542,8 +1499,6 @@ s32 rtw_xmit_classifier(struct adapter *padapter, struct xmit_frame *pxmitframe)
 	ptxservq->qcnt++;
 	phwxmits[ac_index].accnt++;
 exit:
-
-
 	return res;
 }
 

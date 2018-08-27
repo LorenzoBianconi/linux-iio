@@ -246,18 +246,9 @@ struct wilc_hif_func {
 	void (*disable_interrupt)(struct wilc *nic);
 };
 
-/********************************************
- *
- *      Configuration Structure
- *
- ********************************************/
-
 #define MAX_CFG_FRAME_SIZE	1468
 
 struct wilc_cfg_frame {
-	u8 ether_header[14];
-	u8 ip_header[20];
-	u8 udp_header[8];
 	u8 wid_header[8];
 	u8 frame[MAX_CFG_FRAME_SIZE];
 };

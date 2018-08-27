@@ -39,44 +39,6 @@ static const char * const iw_operation_mode[] = {
 	"Auto", "Ad-Hoc", "Managed",  "Master", "Repeater", "Secondary", "Monitor"
 };
 
-static int hex2num_i(char c)
-{
-	if (c >= '0' && c <= '9')
-		return c - '0';
-	if (c >= 'a' && c <= 'f')
-		return c - 'a' + 10;
-	if (c >= 'A' && c <= 'F')
-		return c - 'A' + 10;
-	return -1;
-}
-
-/**
- * hwaddr_aton - Convert ASCII string to MAC address
- * @txt: MAC address as a string (e.g., "00:11:22:33:44:55")
- * @addr: Buffer for the MAC address (ETH_ALEN = 6 bytes)
- * Returns: 0 on success, -1 on failure (e.g., string not a MAC address)
- */
-static int hwaddr_aton_i(const char *txt, u8 *addr)
-{
-	int i;
-
-	for (i = 0; i < 6; i++) {
-		int a, b;
-
-		a = hex2num_i(*txt++);
-		if (a < 0)
-			return -1;
-		b = hex2num_i(*txt++);
-		if (b < 0)
-			return -1;
-		*addr++ = (a << 4) | b;
-		if (i < 5 && *txt++ != ':')
-			return -1;
-	}
-
-	return 0;
-}
-
 void indicate_wx_scan_complete_event(struct adapter *padapter)
 {
 	union iwreq_data wrqu;
@@ -116,38 +78,6 @@ void rtw_indicate_wx_disassoc_event(struct adapter *padapter)
 	wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 	eth_zero_addr(wrqu.ap_addr.sa_data);
 }
-
-/*
-uint	rtw_is_cckrates_included(u8 *rate)
-{
-		u32 i = 0;
-
-		while (rate[i]!= 0)
-		{
-			if  ((((rate[i]) & 0x7f) == 2)	|| (((rate[i]) & 0x7f) == 4) ||
-			(((rate[i]) & 0x7f) == 11)  || (((rate[i]) & 0x7f) == 22))
-			return true;
-			i++;
-		}
-
-		return false;
-}
-
-uint	rtw_is_cckratesonly_included(u8 *rate)
-{
-	u32 i = 0;
-
-	while (rate[i]!= 0)
-	{
-			if  ((((rate[i]) & 0x7f) != 2) && (((rate[i]) & 0x7f) != 4) &&
-				(((rate[i]) & 0x7f) != 11)  && (((rate[i]) & 0x7f) != 22))
-			return false;
-			i++;
-	}
-
-	return true;
-}
-*/
 
 static char *translate_scan(struct adapter *padapter,
 				struct iw_request_info* info, struct wlan_network *pnetwork,
@@ -196,26 +126,26 @@ static char *translate_scan(struct adapter *padapter,
 
 	/* Add the protocol name */
 	iwe.cmd = SIOCGIWNAME;
-	if ((rtw_is_cckratesonly_included((u8 *)&pnetwork->network.SupportedRates)) == true) {
-		if (ht_cap == true)
+	if (rtw_is_cckratesonly_included((u8 *)&pnetwork->network.SupportedRates)) {
+		if (ht_cap)
 			snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11bn");
 		else
 		snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11b");
-	} else if ((rtw_is_cckrates_included((u8 *)&pnetwork->network.SupportedRates)) == true) {
-		if (ht_cap == true)
+	} else if (rtw_is_cckrates_included((u8 *)&pnetwork->network.SupportedRates)) {
+		if (ht_cap)
 			snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11bgn");
 		else
 			snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11bg");
 	} else {
 		if (pnetwork->network.Configuration.DSConfig > 14) {
-			if (vht_cap == true)
+			if (vht_cap)
 				snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11AC");
-			else if (ht_cap == true)
+			else if (ht_cap)
 				snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11an");
 			else
 				snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11a");
 		} else {
-			if (ht_cap == true)
+			if (ht_cap)
 				snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11gn");
 			else
 				snprintf(iwe.u.name, IFNAMSIZ, "IEEE 802.11g");
@@ -855,26 +785,26 @@ static int rtw_wx_get_name(struct net_device *dev,
 
 		prates = &pcur_bss->SupportedRates;
 
-		if (rtw_is_cckratesonly_included((u8 *)prates) == true) {
-			if (ht_cap == true)
+		if (rtw_is_cckratesonly_included((u8 *)prates)) {
+			if (ht_cap)
 				snprintf(wrqu->name, IFNAMSIZ, "IEEE 802.11bn");
 			else
 				snprintf(wrqu->name, IFNAMSIZ, "IEEE 802.11b");
-		} else if ((rtw_is_cckrates_included((u8 *)prates)) == true) {
-			if (ht_cap == true)
+		} else if (rtw_is_cckrates_included((u8 *)prates)) {
+			if (ht_cap)
 				snprintf(wrqu->name, IFNAMSIZ, "IEEE 802.11bgn");
 			else
 				snprintf(wrqu->name, IFNAMSIZ, "IEEE 802.11bg");
 		} else {
 			if (pcur_bss->Configuration.DSConfig > 14) {
-				if (vht_cap == true)
+				if (vht_cap)
 					snprintf(wrqu->name, IFNAMSIZ, "IEEE 802.11AC");
-				else if (ht_cap == true)
+				else if (ht_cap)
 					snprintf(wrqu->name, IFNAMSIZ, "IEEE 802.11an");
 				else
 					snprintf(wrqu->name, IFNAMSIZ, "IEEE 802.11a");
 			} else {
-				if (ht_cap == true)
+				if (ht_cap)
 					snprintf(wrqu->name, IFNAMSIZ, "IEEE 802.11gn");
 				else
 					snprintf(wrqu->name, IFNAMSIZ, "IEEE 802.11g");
@@ -2567,8 +2497,7 @@ static int rtw_get_ap_info(struct net_device *dev,
 
 		pnetwork = LIST_CONTAINOR(plist, struct wlan_network, list);
 
-		/* if (hwaddr_aton_i(pdata->pointer, bssid)) */
-		if (hwaddr_aton_i(data, bssid)) {
+		if (!mac_pton(data, bssid)) {
 			DBG_871X("Invalid BSSID '%s'.\n", (u8 *)data);
 			spin_unlock_bh(&(pmlmepriv->scanned_queue.lock));
 			return -EINVAL;

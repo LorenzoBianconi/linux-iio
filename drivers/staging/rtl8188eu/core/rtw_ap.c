@@ -145,112 +145,6 @@ static void update_BCNTIM(struct adapter *padapter)
 	set_tx_beacon_cmd(padapter);
 }
 
-void rtw_add_bcn_ie(struct adapter *padapter, struct wlan_bssid_ex *pnetwork,
-		    u8 index, u8 *data, u8 len)
-{
-	struct ndis_802_11_var_ie *pIE;
-	u8 bmatch = false;
-	u8 *pie = pnetwork->ies;
-	u8 *p = NULL, *dst_ie = NULL, *premainder_ie = NULL;
-	u8 *pbackup_remainder_ie = NULL;
-	u32 i, offset, ielen = 0, ie_offset, remainder_ielen = 0;
-
-	for (i = sizeof(struct ndis_802_11_fixed_ie); i < pnetwork->ie_length;) {
-		pIE = (struct ndis_802_11_var_ie *)(pnetwork->ies + i);
-
-		if (pIE->ElementID > index) {
-			break;
-		/*  already exist the same IE */
-		} else if (pIE->ElementID == index) {
-			p = (u8 *)pIE;
-			ielen = pIE->Length;
-			bmatch = true;
-			break;
-		}
-		p = (u8 *)pIE;
-		ielen = pIE->Length;
-		i += (pIE->Length + 2);
-	}
-
-	if (p && ielen > 0) {
-		ielen += 2;
-
-		premainder_ie = p + ielen;
-
-		ie_offset = (int)(p - pie);
-
-		remainder_ielen = pnetwork->ie_length - ie_offset - ielen;
-
-		if (bmatch)
-			dst_ie = p;
-		else
-			dst_ie = p + ielen;
-	}
-
-	if (remainder_ielen > 0) {
-		pbackup_remainder_ie = rtw_malloc(remainder_ielen);
-		if (pbackup_remainder_ie && premainder_ie)
-			memcpy(pbackup_remainder_ie, premainder_ie,
-			       remainder_ielen);
-	}
-
-	*dst_ie++ = index;
-	*dst_ie++ = len;
-
-	memcpy(dst_ie, data, len);
-	dst_ie += len;
-
-	/* copy remainder IE */
-	if (pbackup_remainder_ie) {
-		memcpy(dst_ie, pbackup_remainder_ie, remainder_ielen);
-
-		kfree(pbackup_remainder_ie);
-	}
-
-	offset =  (uint)(dst_ie - pie);
-	pnetwork->ie_length = offset + remainder_ielen;
-}
-
-void rtw_remove_bcn_ie(struct adapter *padapter, struct wlan_bssid_ex *pnetwork,
-		       u8 index)
-{
-	u8 *p, *dst_ie = NULL, *premainder_ie = NULL;
-	u8 *pbackup_remainder_ie = NULL;
-	uint offset, ielen, ie_offset, remainder_ielen = 0;
-	u8	*pie = pnetwork->ies;
-
-	p = rtw_get_ie(pie + _FIXED_IE_LENGTH_, index, &ielen,
-		       pnetwork->ie_length - _FIXED_IE_LENGTH_);
-	if (p && ielen > 0) {
-		ielen += 2;
-
-		premainder_ie = p + ielen;
-
-		ie_offset = (int)(p - pie);
-
-		remainder_ielen = pnetwork->ie_length - ie_offset - ielen;
-
-		dst_ie = p;
-	}
-
-	if (remainder_ielen > 0) {
-		pbackup_remainder_ie = rtw_malloc(remainder_ielen);
-		if (pbackup_remainder_ie && premainder_ie)
-			memcpy(pbackup_remainder_ie, premainder_ie,
-			       remainder_ielen);
-	}
-
-	/* copy remainder IE */
-	if (pbackup_remainder_ie) {
-		memcpy(dst_ie, pbackup_remainder_ie, remainder_ielen);
-
-		kfree(pbackup_remainder_ie);
-	}
-
-	offset =  (uint)(dst_ie - pie);
-	pnetwork->ie_length = offset + remainder_ielen;
-}
-
 static u8 chk_sta_is_alive(struct sta_info *psta)
 {
 	u8 ret = false;
@@ -362,7 +256,8 @@ void	expire_timeout_chk(struct adapter *padapter)
 				stainfo_offset =
 					rtw_stainfo_offset(pstapriv, psta);
 				if (stainfo_offset_valid(stainfo_offset))
-					chk_alive_list[chk_alive_num++] = stainfo_offset;
+					chk_alive_list[chk_alive_num++] =
+						stainfo_offset;
 				continue;
 			}
 
@@ -626,7 +521,6 @@ void update_sta_info_apmode(struct adapter *padapter, struct sta_info *psta)
 	else
 		psta->ieee8021x_blocked = false;
 
-
 	/* update sta's cap */
 
 	/* ERP */
@@ -724,7 +618,6 @@ static void start_bss_network(struct adapter *padapter, u8 *pbuf)
 	cur_channel = pnetwork->Configuration.DSConfig;
 	cur_bwmode = HT_CHANNEL_WIDTH_20;
 	cur_ch_offset = HAL_PRIME_CHNL_OFFSET_DONT_CARE;
-
 
 	/* check if there is wps ie,
 	 * if there is wpsie in beacon, the hostapd will update
@@ -875,7 +768,6 @@ int rtw_check_beacon_data(struct adapter *padapter, u8 *pbuf,  int len)
 	if (check_fwstate(pmlmepriv, WIFI_AP_STATE) != true)
 		return _FAIL;
 
-
 	if (len < 0 || len > MAX_IE_SZ)
 		return _FAIL;
 
@@ -884,7 +776,6 @@ int rtw_check_beacon_data(struct adapter *padapter, u8 *pbuf,  int len)
 	memset(ie, 0, MAX_IE_SZ);
 
 	memcpy(ie, pbuf, pbss_network->ie_length);
-
 
 	if (pbss_network->InfrastructureMode != Ndis802_11APMode)
 		return _FAIL;
@@ -1681,7 +1572,6 @@ u8 ap_free_sta(struct adapter *padapter, struct sta_info *psta,
 	/* clear cam entry / key */
 	rtw_clearstakey_cmd(padapter, (u8 *)psta, (u8)(psta->mac_id + 3), true);
 
-
 	spin_lock_bh(&psta->lock);
 	psta->state &= ~_FW_LINKED;
 	spin_unlock_bh(&psta->lock);
@@ -1729,7 +1619,6 @@ int rtw_sta_flush(struct adapter *padapter)
 		ap_free_sta(padapter, psta, true, WLAN_REASON_DEAUTH_LEAVING);
 	}
 	spin_unlock_bh(&pstapriv->asoc_list_lock);
-
 
 	issue_deauth(padapter, bc_addr, WLAN_REASON_DEAUTH_LEAVING);
 

@@ -42,7 +42,8 @@ static u8 rf69_read_reg(struct spi_device *spi, u8 addr)
 
 #ifdef DEBUG_VALUES
 	if (retval < 0)
-		/* should never happen, since we already checked,
+		/*
+		 * should never happen, since we already checked,
 		 * that module is connected. Therefore no error
 		 * handling, just an optional error message...
 		 */
@@ -66,7 +67,8 @@ static int rf69_write_reg(struct spi_device *spi, u8 addr, u8 value)
 
 #ifdef DEBUG_VALUES
 	if (retval < 0)
-		/* should never happen, since we already checked,
+		/*
+		 * should never happen, since we already checked,
 		 * that module is connected. Therefore no error
 		 * handling, just an optional error message...
 		 */
@@ -128,9 +130,13 @@ int rf69_set_mode(struct spi_device *spi, enum mode mode)
 	return rf69_read_mod_write(spi, REG_OPMODE, MASK_OPMODE_MODE,
 				   mode_map[mode]);
 
-	// we are using packet mode, so this check is not really needed
-	// but waiting for mode ready is necessary when going from sleep because the FIFO may not be immediately available from previous mode
-	//while (_mode == RF69_MODE_SLEEP && (READ_REG(REG_IRQFLAGS1) & RF_IRQFLAGS1_MODEREADY) == 0x00); // Wait for ModeReady
+	/*
+	 * we are using packet mode, so this check is not really needed
+	 * but waiting for mode ready is necessary when going from sleep
+	 * because the FIFO may not be immediately available from previous mode
+	 * while (_mode == RF69_MODE_SLEEP && (READ_REG(REG_IRQFLAGS1) &
+		  RF_IRQFLAGS1_MODEREADY) == 0x00); // Wait for ModeReady
+	 */
 }
 
 int rf69_set_data_mode(struct spi_device *spi, u8 data_mode)
@@ -519,22 +525,34 @@ int rf69_set_dio_mapping(struct spi_device *spi, u8 dio_number, u8 value)
 
 	switch (dio_number) {
 	case 0:
-		mask = MASK_DIO0; shift = SHIFT_DIO0; dio_addr = REG_DIOMAPPING1;
+		mask = MASK_DIO0;
+		shift = SHIFT_DIO0;
+		dio_addr = REG_DIOMAPPING1;
 		break;
 	case 1:
-		mask = MASK_DIO1; shift = SHIFT_DIO1; dio_addr = REG_DIOMAPPING1;
+		mask = MASK_DIO1;
+		shift = SHIFT_DIO1;
+		dio_addr = REG_DIOMAPPING1;
 		break;
 	case 2:
-		mask = MASK_DIO2; shift = SHIFT_DIO2; dio_addr = REG_DIOMAPPING1;
+		mask = MASK_DIO2;
+		shift = SHIFT_DIO2;
+		dio_addr = REG_DIOMAPPING1;
 		break;
 	case 3:
-		mask = MASK_DIO3; shift = SHIFT_DIO3; dio_addr = REG_DIOMAPPING1;
+		mask = MASK_DIO3;
+		shift = SHIFT_DIO3;
+		dio_addr = REG_DIOMAPPING1;
 		break;
 	case 4:
-		mask = MASK_DIO4; shift = SHIFT_DIO4; dio_addr = REG_DIOMAPPING2;
+		mask = MASK_DIO4;
+		shift = SHIFT_DIO4;
+		dio_addr = REG_DIOMAPPING2;
 		break;
 	case 5:
-		mask = MASK_DIO5; shift = SHIFT_DIO5; dio_addr = REG_DIOMAPPING2;
+		mask = MASK_DIO5;
+		shift = SHIFT_DIO5;
+		dio_addr = REG_DIOMAPPING2;
 		break;
 	default:
 	dev_dbg(&spi->dev, "set: illegal input param");
@@ -572,8 +590,10 @@ bool rf69_get_flag(struct spi_device *spi, enum flag flag)
 		return (rf69_read_reg(spi, REG_IRQFLAGS1) & MASK_IRQFLAGS1_SYNC_ADDRESS_MATCH);
 	case fifo_full:
 		return (rf69_read_reg(spi, REG_IRQFLAGS2) & MASK_IRQFLAGS2_FIFO_FULL);
-/*	case fifo_not_empty:
- *		return (rf69_read_reg(spi, REG_IRQFLAGS2) & MASK_IRQFLAGS2_FIFO_NOT_EMPTY); */
+/*
+ *	case fifo_not_empty:
+ *		return (rf69_read_reg(spi, REG_IRQFLAGS2) & MASK_IRQFLAGS2_FIFO_NOT_EMPTY);
+ */
 	case fifo_empty:
 		return !(rf69_read_reg(spi, REG_IRQFLAGS2) & MASK_IRQFLAGS2_FIFO_NOT_EMPTY);
 	case fifo_level_below_threshold:
@@ -769,7 +789,8 @@ int rf69_set_fifo_threshold(struct spi_device *spi, u8 threshold)
 	if (retval)
 		return retval;
 
-	/* access the fifo to activate new threshold
+	/*
+	 * access the fifo to activate new threshold
 	 * retval (mis-) used as buffer here
 	 */
 	return rf69_read_fifo(spi, (u8 *)&retval, 1);
