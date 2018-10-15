@@ -245,7 +245,8 @@ static unsigned int rtw_classify8021d(struct sk_buff *skb)
 }
 
 static u16 rtw_select_queue(struct net_device *dev, struct sk_buff *skb,
-			    void *accel_priv, select_queue_fallback_t fallback)
+			    struct net_device *sb_dev,
+			    select_queue_fallback_t fallback)
 {
 	struct adapter	*padapter = rtw_netdev_priv(dev);
 	struct mlme_priv *pmlmepriv = &padapter->mlmepriv;
@@ -642,7 +643,7 @@ int  ips_netdrv_open(struct adapter *padapter)
 	mod_timer(&padapter->mlmepriv.dynamic_chk_timer,
 		  jiffies + msecs_to_jiffies(5000));
 
-	 return _SUCCESS;
+	return _SUCCESS;
 
 netdev_open_error:
 	DBG_88E("-ips_netdrv_open - drv_open failure, bup =%d\n", padapter->bup);

@@ -50,8 +50,6 @@ enum gasket_interrupt_packing {
 /* Type of the interrupt supported by the device. */
 enum gasket_interrupt_type {
 	PCI_MSIX = 0,
-	PCI_MSI = 1,
-	PLATFORM_WIRE = 2,
 };
 
 /*
@@ -67,12 +65,6 @@ struct gasket_interrupt_desc {
 	u64 reg;
 	/* The location of this interrupt inside register reg, if packed. */
 	int packing;
-};
-
-/* Offsets to the wire interrupt handling registers */
-struct gasket_wire_interrupt_offsets {
-	u64 pending_bit_array;
-	u64 mask_array;
 };
 
 /*
@@ -302,12 +294,6 @@ struct gasket_dev {
 	/* Hardware revision value for this device. */
 	int hardware_revision;
 
-	/*
-	 * Device-specific data; allocated in gasket_driver_desc.add_dev_cb()
-	 * and freed in gasket_driver_desc.remove_dev_cb().
-	 */
-	void *cb_data;
-
 	/* Protects access to per-device data (i.e. this structure). */
 	struct mutex mutex;
 
@@ -390,9 +376,6 @@ struct gasket_driver_desc {
 	 */
 	struct gasket_coherent_buffer_desc coherent_buffer_description;
 
-	/* Offset of wire interrupt registers. */
-	const struct gasket_wire_interrupt_offsets *wire_interrupt_offsets;
-
 	/* Interrupt type. (One of gasket_interrupt_type). */
 	int interrupt_type;
 
@@ -415,29 +398,6 @@ struct gasket_driver_desc {
 	int interrupt_pack_width;
 
 	/* Driver callback functions - all may be NULL */
-	/*
-	 * add_dev_cb: Callback when a device is found.
-	 * @dev: The gasket_dev struct for this driver instance.
-	 *
-	 * This callback should initialize the device-specific cb_data.
-	 * Called when a device is found by the driver,
-	 * before any BAR ranges have been mapped. If this call fails (returns
-	 * nonzero), remove_dev_cb will be called.
-	 *
-	 */
-	int (*add_dev_cb)(struct gasket_dev *dev);
-
-	/*
-	 * remove_dev_cb: Callback for when a device is removed from the system.
-	 * @dev: The gasket_dev struct for this driver instance.
-	 *
-	 * This callback should free data allocated in add_dev_cb.
-	 * Called immediately before a device is unregistered by the driver.
-	 * All framework-managed resources will have been cleaned up by the time
-	 * this callback is invoked (PCI BARs, character devices, ...).
-	 */
-	int (*remove_dev_cb)(struct gasket_dev *dev);
-
 	/*
 	 * device_open_cb: Callback for when a device node is opened in write
 	 * mode.
@@ -472,47 +432,6 @@ struct gasket_driver_desc {
 	 * to per-fd cleanup (which should be handled by device_release_cb).
 	 */
 	int (*device_close_cb)(struct gasket_dev *dev);
-
-	/*
-	 * enable_dev_cb: Callback immediately before enabling the device.
-	 * @dev: Pointer to the gasket_dev struct for this driver instance.
-	 *
-	 * This callback is invoked after the device has been added and all BAR
-	 * spaces mapped, immediately before registering and enabling the
-	 * [character] device via cdev_add. If this call fails (returns
-	 * nonzero), disable_dev_cb will be called.
-	 *
-	 * Note that cdev are initialized but not active
-	 * (cdev_add has not yet been called) when this callback is invoked.
-	 */
-	int (*enable_dev_cb)(struct gasket_dev *dev);
-
-	/*
-	 * disable_dev_cb: Callback immediately after disabling the device.
-	 * @dev: Pointer to the gasket_dev struct for this driver instance.
-	 *
-	 * Called during device shutdown, immediately after disabling device
-	 * operations via cdev_del.
-	 */
-	int (*disable_dev_cb)(struct gasket_dev *dev);
-
-	/*
-	 * sysfs_setup_cb: Callback to set up driver-specific sysfs nodes.
-	 * @dev: Pointer to the gasket_dev struct for this device.
-	 *
-	 * Called just before enable_dev_cb.
-	 *
-	 */
-	int (*sysfs_setup_cb)(struct gasket_dev *dev);
-
-	/*
-	 * sysfs_cleanup_cb: Callback to clean up driver-specific sysfs nodes.
-	 * @dev: Pointer to the gasket_dev struct for this device.
-	 *
-	 * Called just before disable_dev_cb.
-	 *
-	 */
-	int (*sysfs_cleanup_cb)(struct gasket_dev *dev);
 
 	/*
 	 * get_mappable_regions_cb: Get descriptors of mappable device memory.
@@ -607,6 +526,18 @@ int gasket_register_device(const struct gasket_driver_desc *desc);
  */
 void gasket_unregister_device(const struct gasket_driver_desc *desc);
 
+/* Add a PCI gasket device. */
+int gasket_pci_add_device(struct pci_dev *pci_dev,
+			  struct gasket_dev **gasket_devp);
+/* Remove a PCI gasket device. */
+void gasket_pci_remove_device(struct pci_dev *pci_dev);
+
+/* Enable a Gasket device. */
+int gasket_enable_device(struct gasket_dev *gasket_dev);
+
+/* Disable a Gasket device. */
+void gasket_disable_device(struct gasket_dev *gasket_dev);
+
 /*
  * Reset the Gasket device.
  * @gasket_dev: Gasket device struct.
@@ -648,25 +579,25 @@ const char *gasket_num_name_lookup(uint num,
 static inline ulong gasket_dev_read_64(struct gasket_dev *gasket_dev, int bar,
 				       ulong location)
 {
-	return readq(&gasket_dev->bar_data[bar].virt_base[location]);
+	return readq_relaxed(&gasket_dev->bar_data[bar].virt_base[location]);
 }
 
 static inline void gasket_dev_write_64(struct gasket_dev *dev, u64 value,
 				       int bar, ulong location)
 {
-	writeq(value, &dev->bar_data[bar].virt_base[location]);
+	writeq_relaxed(value, &dev->bar_data[bar].virt_base[location]);
 }
 
 static inline void gasket_dev_write_32(struct gasket_dev *dev, u32 value,
 				       int bar, ulong location)
 {
-	writel(value, &dev->bar_data[bar].virt_base[location]);
+	writel_relaxed(value, &dev->bar_data[bar].virt_base[location]);
 }
 
 static inline u32 gasket_dev_read_32(struct gasket_dev *dev, int bar,
 				     ulong location)
 {
-	return readl(&dev->bar_data[bar].virt_base[location]);
+	return readl_relaxed(&dev->bar_data[bar].virt_base[location]);
 }
 
 static inline void gasket_read_modify_write_64(struct gasket_dev *dev, int bar,

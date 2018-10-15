@@ -36,11 +36,11 @@ static void RxPktPendingTimeout(struct timer_list *t)
 	bool bPktInBuf = false;
 
 	spin_lock_irqsave(&(ieee->reorder_spinlock), flags);
-	IEEE80211_DEBUG(IEEE80211_DL_REORDER,"==================>%s()\n",__func__);
+	IEEE80211_DEBUG(IEEE80211_DL_REORDER, "==================>%s()\n", __func__);
 	if(pRxTs->rx_timeout_indicate_seq != 0xffff) {
 		// Indicate the pending packets sequentially according to SeqNum until meet the gap.
 		while(!list_empty(&pRxTs->rx_pending_pkt_list)) {
-			pReorderEntry = (PRX_REORDER_ENTRY)list_entry(pRxTs->rx_pending_pkt_list.prev,RX_REORDER_ENTRY,List);
+			pReorderEntry = (PRX_REORDER_ENTRY)list_entry(pRxTs->rx_pending_pkt_list.prev, RX_REORDER_ENTRY, List);
 			if(index == 0)
 				pRxTs->rx_indicate_seq = pReorderEntry->SeqNum;
 
@@ -51,7 +51,7 @@ static void RxPktPendingTimeout(struct timer_list *t)
 				if(SN_EQUAL(pReorderEntry->SeqNum, pRxTs->rx_indicate_seq))
 					pRxTs->rx_indicate_seq = (pRxTs->rx_indicate_seq + 1) % 4096;
 
-				IEEE80211_DEBUG(IEEE80211_DL_REORDER,"RxPktPendingTimeout(): IndicateSeq: %d\n", pReorderEntry->SeqNum);
+				IEEE80211_DEBUG(IEEE80211_DL_REORDER, "RxPktPendingTimeout(): IndicateSeq: %d\n", pReorderEntry->SeqNum);
 				ieee->stats_IndicateArray[index] = pReorderEntry->prxb;
 				index++;
 
@@ -105,7 +105,7 @@ static void ResetTsCommonInfo(struct ts_common_info *pTsCommonInfo)
 {
 	eth_zero_addr(pTsCommonInfo->addr);
 	memset(&pTsCommonInfo->t_spec, 0, sizeof(struct tspec_body));
-	memset(&pTsCommonInfo->t_class, 0, sizeof(QOS_TCLAS)*TCLAS_NUM);
+	memset(&pTsCommonInfo->t_class, 0, sizeof(union qos_tclas)*TCLAS_NUM);
 	pTsCommonInfo->t_clas_proc = 0;
 	pTsCommonInfo->t_clas_num = 0;
 }
@@ -151,9 +151,9 @@ void TSInitialize(struct ieee80211_device *ieee)
 		timer_setup(&pTxTS->ts_common_info.inact_timer, TsInactTimeout,
 			    0);
 		timer_setup(&pTxTS->ts_add_ba_timer, TsAddBaProcess, 0);
-		timer_setup(&pTxTS->tx_pending_ba_record.Timer, BaSetupTimeOut,
+		timer_setup(&pTxTS->tx_pending_ba_record.timer, BaSetupTimeOut,
 			    0);
-		timer_setup(&pTxTS->tx_admitted_ba_record.Timer,
+		timer_setup(&pTxTS->tx_admitted_ba_record.timer,
 			    TxBaInactTimeout, 0);
 		ResetTxTsEntry(pTxTS);
 		list_add_tail(&pTxTS->ts_common_info.list, &ieee->Tx_TS_Unused_List);
@@ -171,7 +171,7 @@ void TSInitialize(struct ieee80211_device *ieee)
 			    0);
 		timer_setup(&pRxTS->ts_common_info.inact_timer, TsInactTimeout,
 			    0);
-		timer_setup(&pRxTS->rx_admitted_ba_record.Timer,
+		timer_setup(&pRxTS->rx_admitted_ba_record.timer,
 			    RxBaInactTimeout, 0);
 		timer_setup(&pRxTS->rx_pkt_pending_timer, RxPktPendingTimeout, 0);
 		ResetRxTsEntry(pRxTS);
@@ -265,7 +265,7 @@ static struct ts_common_info *SearchAdmitTRStream(struct ieee80211_device *ieee,
 }
 
 static void MakeTSEntry(struct ts_common_info *pTsCommonInfo, u8 *Addr,
-			struct tspec_body *pTSPEC, PQOS_TCLAS pTCLAS, u8 TCLAS_Num,
+			struct tspec_body *pTSPEC, union qos_tclas *pTCLAS, u8 TCLAS_Num,
 			u8 TCLAS_Proc)
 {
 	u8	count;
@@ -279,7 +279,7 @@ static void MakeTSEntry(struct ts_common_info *pTsCommonInfo, u8 *Addr,
 		memcpy((u8 *)(&(pTsCommonInfo->t_spec)), (u8 *)pTSPEC, sizeof(struct tspec_body));
 
 	for(count = 0; count < TCLAS_Num; count++)
-		memcpy((u8 *)(&(pTsCommonInfo->t_class[count])), (u8 *)pTCLAS, sizeof(QOS_TCLAS));
+		memcpy((u8 *)(&(pTsCommonInfo->t_class[count])), (u8 *)pTCLAS, sizeof(union qos_tclas));
 
 	pTsCommonInfo->t_clas_proc = TCLAS_Proc;
 	pTsCommonInfo->t_clas_num = TCLAS_Num;
@@ -426,7 +426,7 @@ static void RemoveTsEntry(struct ieee80211_device *ieee, struct ts_common_info *
 		while(!list_empty(&pRxTS->rx_pending_pkt_list)) {
 			spin_lock_irqsave(&(ieee->reorder_spinlock), flags);
 			//pRxReorderEntry = list_entry(&pRxTS->rx_pending_pkt_list.prev,RX_REORDER_ENTRY,List);
-			pRxReorderEntry = (PRX_REORDER_ENTRY)list_entry(pRxTS->rx_pending_pkt_list.prev,RX_REORDER_ENTRY,List);
+			pRxReorderEntry = (PRX_REORDER_ENTRY)list_entry(pRxTS->rx_pending_pkt_list.prev, RX_REORDER_ENTRY, List);
 			list_del_init(&pRxReorderEntry->List);
 			{
 				int i = 0;
@@ -529,7 +529,7 @@ void TsStartAddBaProcess(struct ieee80211_device *ieee, struct tx_ts_record *pTx
 			mod_timer(&pTxTS->ts_add_ba_timer,
 				  jiffies + msecs_to_jiffies(TS_ADDBA_DELAY));
 		} else {
-			IEEE80211_DEBUG(IEEE80211_DL_BA,"TsStartAddBaProcess(): Immediately Start ADDBA now!!\n");
+			IEEE80211_DEBUG(IEEE80211_DL_BA, "TsStartAddBaProcess(): Immediately Start ADDBA now!!\n");
 			mod_timer(&pTxTS->ts_add_ba_timer, jiffies+10); //set 10 ticks
 		}
 	} else {

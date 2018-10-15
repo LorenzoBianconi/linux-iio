@@ -14,56 +14,55 @@ enum tr_select {
 	RX_DIR = 1,
 };
 
-typedef union _QOS_TCLAS {
+union qos_tclas {
+	struct type_general {
+		u8		priority;
+		u8		classifier_type;
+		u8		mask;
+	} type_general;
 
-	struct _TYPE_GENERAL {
-		u8		Priority;
-		u8		ClassifierType;
-		u8		Mask;
-	} TYPE_GENERAL;
+	struct type0_eth {
+		u8		priority;
+		u8		classifier_type;
+		u8		mask;
+		u8		src_addr[6];
+		u8		dst_addr[6];
+		u16		type;
+	} type0_eth;
 
-	struct _TYPE0_ETH {
-		u8		Priority;
-		u8		ClassifierType;
-		u8		Mask;
-		u8		SrcAddr[6];
-		u8		DstAddr[6];
-		u16		Type;
-	} TYPE0_ETH;
+	struct type1_ipv4 {
+		u8		priority;
+		u8		classifier_type;
+		u8		mask;
+		u8		version;
+		u8		src_ip[4];
+		u8		dst_ip[4];
+		u16		src_port;
+		u16		dst_port;
+		u8		dscp;
+		u8		protocol;
+		u8		reserved;
+	} type1_ipv4;
 
-	struct _TYPE1_IPV4 {
-		u8		Priority;
-		u8		ClassifierType;
-		u8		Mask;
-		u8		Version;
-		u8		SrcIP[4];
-		u8		DstIP[4];
-		u16		SrcPort;
-		u16		DstPort;
-		u8		DSCP;
-		u8		Protocol;
-		u8		Reserved;
-	} TYPE1_IPV4;
+	struct type1_ipv6 {
+		u8		priority;
+		u8		classifier_type;
+		u8		mask;
+		u8		version;
+		u8		src_ip[16];
+		u8		dst_ip[16];
+		u16		src_port;
+		u16		dst_port;
+		u8		flow_label[3];
+	} type1_ipv6;
 
-	struct _TYPE1_IPV6 {
-		u8		Priority;
-		u8		ClassifierType;
-		u8		Mask;
-		u8		Version;
-		u8		SrcIP[16];
-		u8		DstIP[16];
-		u16		SrcPort;
-		u16		DstPort;
-		u8		FlowLabel[3];
-	} TYPE1_IPV6;
-
-	struct _TYPE2_8021Q {
-		u8		Priority;
-		u8		ClassifierType;
-		u8		Mask;
-		u16		TagType;
-	} TYPE2_8021Q;
-} QOS_TCLAS, *PQOS_TCLAS;
+	struct type2_8021q {
+		u8		priority;
+		u8		classifier_type;
+		u8		mask;
+		u16		tag_type;
+	} type2_8021q;
+};
 
 struct ts_common_info {
 	struct list_head		list;
@@ -71,7 +70,7 @@ struct ts_common_info {
 	struct timer_list		inact_timer;
 	u8				addr[6];
 	struct tspec_body		t_spec;
-	QOS_TCLAS			t_class[TCLAS_NUM];
+	union qos_tclas			t_class[TCLAS_NUM];
 	u8				t_clas_proc;
 	u8				t_clas_num;
 };
@@ -79,8 +78,8 @@ struct ts_common_info {
 struct tx_ts_record {
 	struct ts_common_info		ts_common_info;
 	u16				tx_cur_seq;
-	BA_RECORD			tx_pending_ba_record;	/*  For BA Originator */
-	BA_RECORD			tx_admitted_ba_record;	/*  For BA Originator */
+	struct ba_record		tx_pending_ba_record;
+	struct ba_record		tx_admitted_ba_record;
 	u8				add_ba_req_in_progress;
 	u8				add_ba_req_delayed;
 	u8				using_ba;
@@ -94,7 +93,7 @@ struct rx_ts_record {
 	u16				rx_timeout_indicate_seq;
 	struct list_head		rx_pending_pkt_list;
 	struct timer_list		rx_pkt_pending_timer;
-	BA_RECORD			rx_admitted_ba_record;	 /*  For BA Recipient */
+	struct ba_record		rx_admitted_ba_record;
 	u16				rx_last_seq_num;
 	u8				rx_last_frag_num;
 	u8				num;

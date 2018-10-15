@@ -11,16 +11,6 @@
 #include "phy.h"
 
 u32 GlobalDebugLevel;
-static const u16 dB_Invert_Table[8][12] = {
-	{1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 4},
-	{4, 5, 6, 6, 7, 8, 9, 10, 11, 13, 14, 16},
-	{18, 20, 22, 25, 28, 32, 35, 40, 45, 50, 56, 63},
-	{71, 79, 89, 100, 112, 126, 141, 158, 178, 200, 224, 251},
-	{282, 316, 355, 398, 447, 501, 562, 631, 708, 794, 891, 1000},
-	{1122, 1259, 1413, 1585, 1778, 1995, 2239, 2512, 2818, 3162, 3548, 3981},
-	{4467, 5012, 5623, 6310, 7079, 7943, 8913, 10000, 11220, 12589, 14125, 15849},
-	{17783, 19953, 22387, 25119, 28184, 31623, 35481, 39811, 44668, 50119, 56234, 65535}
-};
 
 /* avoid to warn in FreeBSD ==> To DO modify */
 static u32 EDCAParam[HT_IOT_PEER_MAX][3] = {
@@ -778,22 +768,7 @@ u32 ODM_Get_Rate_Bitmap(struct odm_dm_struct *pDM_Odm, u32 macid, u32 ra_mask, u
 	return rate_bitmap;
 }
 
-/*-----------------------------------------------------------------------------
- * Function:	odm_RefreshRateAdaptiveMask()
- *
- * Overview:	Update rate table mask according to rssi
- *
- * Input:		NONE
- *
- * Output:		NONE
- *
- * Return:		NONE
- *
- * Revised History:
- *	When		Who		Remark
- *	05/27/2009	hpfan	Create Version 0.
- *
- *---------------------------------------------------------------------------*/
+/* Update rate table mask according to rssi */
 void odm_RefreshRateAdaptiveMask(struct odm_dm_struct *pDM_Odm)
 {
 	if (!(pDM_Odm->SupportAbility & ODM_BB_RA_MASK))
@@ -1084,7 +1059,7 @@ void odm_EdcaTurboCheckCE(struct odm_dm_struct *pDM_Odm)
 	struct mlme_ext_priv	*pmlmeext = &(Adapter->mlmeextpriv);
 	struct mlme_ext_info	*pmlmeinfo = &(pmlmeext->mlmext_info);
 
-	if ((pregpriv->wifi_spec == 1))/*  (pmlmeinfo->HT_enable == 0)) */
+	if (pregpriv->wifi_spec == 1) /*  (pmlmeinfo->HT_enable == 0)) */
 		goto dm_CheckEdcaTurbo_EXIT;
 
 	if (pmlmeinfo->assoc_AP_vendor >=  HT_IOT_PEER_MAX)

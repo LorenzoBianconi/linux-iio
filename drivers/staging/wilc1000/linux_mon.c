@@ -1,4 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (c) 2012 - 2018 Microchip Technology Inc., and its subsidiaries.
+ * All rights reserved.
+ */
+
 #include "wilc_wfi_cfgoperations.h"
 
 struct wilc_wfi_radiotap_hdr {
@@ -248,7 +253,7 @@ struct net_device *wilc_wfi_init_mon_interface(const char *name,
 	return wilc_wfi_mon;
 }
 
-int wilc_wfi_deinit_mon_interface(void)
+void wilc_wfi_deinit_mon_interface(void)
 {
 	bool rollback_lock = false;
 
@@ -265,5 +270,4 @@ int wilc_wfi_deinit_mon_interface(void)
 		}
 		wilc_wfi_mon = NULL;
 	}
-	return 0;
 }

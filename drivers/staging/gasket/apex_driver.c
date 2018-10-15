@@ -13,6 +13,7 @@
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
+#include <linux/pci.h>
 #include <linux/printk.h>
 #include <linux/sched.h>
 #include <linux/uaccess.h>
@@ -136,9 +137,6 @@ static const struct gasket_mappable_region mappable_regions[NUM_REGIONS] = {
 	{ 0x44000, 0x1000 },
 	{ 0x48000, 0x1000 },
 };
-
-static const struct gasket_mappable_region cm_mappable_regions[1] = { { 0x0,
-	APEX_CH_MEM_BYTES } };
 
 /* Gasket device interrupts enums must be dense (i.e., no empty slots). */
 enum apex_interrupt {
@@ -447,37 +445,6 @@ static int apex_reset(struct gasket_dev *gasket_dev)
 	return ret;
 }
 
-static int apex_add_dev_cb(struct gasket_dev *gasket_dev)
-{
-	ulong page_table_ready, msix_table_ready;
-	int retries = 0;
-
-	apex_reset(gasket_dev);
-
-	while (retries < APEX_RESET_RETRY) {
-		page_table_ready =
-			gasket_dev_read_64(gasket_dev, APEX_BAR_INDEX,
-					   APEX_BAR2_REG_KERNEL_HIB_PAGE_TABLE_INIT);
-		msix_table_ready =
-			gasket_dev_read_64(gasket_dev, APEX_BAR_INDEX,
-					   APEX_BAR2_REG_KERNEL_HIB_MSIX_TABLE_INIT);
-		if (page_table_ready && msix_table_ready)
-			break;
-		schedule_timeout(msecs_to_jiffies(APEX_RESET_DELAY));
-		retries++;
-	}
-
-	if (retries == APEX_RESET_RETRY) {
-		if (!page_table_ready)
-			dev_err(gasket_dev->dev, "Page table init timed out\n");
-		if (!msix_table_ready)
-			dev_err(gasket_dev->dev, "MSI-X table init timed out\n");
-		return -ETIMEDOUT;
-	}
-
-	return 0;
-}
-
 /*
  * Check permissions for Apex ioctls.
  * Returns true if the current user may execute this ioctl, and false otherwise.
@@ -598,12 +565,6 @@ static struct gasket_sysfs_attribute apex_sysfs_attrs[] = {
 	GASKET_END_OF_ATTR_ARRAY
 };
 
-static int apex_sysfs_setup_cb(struct gasket_dev *gasket_dev)
-{
-	return gasket_sysfs_create_entries(gasket_dev->dev_info.device,
-					   apex_sysfs_attrs);
-}
-
 /* On device open, perform a core reinit reset. */
 static int apex_device_open_cb(struct gasket_dev *gasket_dev)
 {
@@ -620,6 +581,86 @@ static void apex_pci_fixup_class(struct pci_dev *pdev)
 }
 DECLARE_PCI_FIXUP_CLASS_HEADER(APEX_PCI_VENDOR_ID, APEX_PCI_DEVICE_ID,
 			       PCI_CLASS_NOT_DEFINED, 8, apex_pci_fixup_class);
+
+static int apex_pci_probe(struct pci_dev *pci_dev,
+			  const struct pci_device_id *id)
+{
+	int ret;
+	ulong page_table_ready, msix_table_ready;
+	int retries = 0;
+	struct gasket_dev *gasket_dev;
+
+	ret = pci_enable_device(pci_dev);
+	if (ret) {
+		dev_err(&pci_dev->dev, "error enabling PCI device\n");
+		return ret;
+	}
+
+	pci_set_master(pci_dev);
+
+	ret = gasket_pci_add_device(pci_dev, &gasket_dev);
+	if (ret) {
+		dev_err(&pci_dev->dev, "error adding gasket device\n");
+		pci_disable_device(pci_dev);
+		return ret;
+	}
+
+	pci_set_drvdata(pci_dev, gasket_dev);
+	apex_reset(gasket_dev);
+
+	while (retries < APEX_RESET_RETRY) {
+		page_table_ready =
+			gasket_dev_read_64(gasket_dev, APEX_BAR_INDEX,
+					   APEX_BAR2_REG_KERNEL_HIB_PAGE_TABLE_INIT);
+		msix_table_ready =
+			gasket_dev_read_64(gasket_dev, APEX_BAR_INDEX,
+					   APEX_BAR2_REG_KERNEL_HIB_MSIX_TABLE_INIT);
+		if (page_table_ready && msix_table_ready)
+			break;
+		schedule_timeout(msecs_to_jiffies(APEX_RESET_DELAY));
+		retries++;
+	}
+
+	if (retries == APEX_RESET_RETRY) {
+		if (!page_table_ready)
+			dev_err(gasket_dev->dev, "Page table init timed out\n");
+		if (!msix_table_ready)
+			dev_err(gasket_dev->dev, "MSI-X table init timed out\n");
+		ret = -ETIMEDOUT;
+		goto remove_device;
+	}
+
+	ret = gasket_sysfs_create_entries(gasket_dev->dev_info.device,
+					  apex_sysfs_attrs);
+	if (ret)
+		dev_err(&pci_dev->dev, "error creating device sysfs entries\n");
+
+	ret = gasket_enable_device(gasket_dev);
+	if (ret) {
+		dev_err(&pci_dev->dev, "error enabling gasket device\n");
+		goto remove_device;
+	}
+
+	/* Place device in low power mode until opened */
+	if (allow_power_save)
+		apex_enter_reset(gasket_dev);
+
+	return 0;
+
+remove_device:
+	gasket_pci_remove_device(pci_dev);
+	pci_disable_device(pci_dev);
+	return ret;
+}
+
+static void apex_pci_remove(struct pci_dev *pci_dev)
+{
+	struct gasket_dev *gasket_dev = pci_get_drvdata(pci_dev);
+
+	gasket_disable_device(gasket_dev);
+	gasket_pci_remove_device(pci_dev);
+	pci_disable_device(pci_dev);
+}
 
 static struct gasket_driver_desc apex_desc = {
 	.name = "apex",
@@ -654,15 +695,6 @@ static struct gasket_driver_desc apex_desc = {
 	.interrupts = apex_interrupts,
 	.interrupt_pack_width = 7,
 
-	.add_dev_cb = apex_add_dev_cb,
-	.remove_dev_cb = NULL,
-
-	.enable_dev_cb = NULL,
-	.disable_dev_cb = NULL,
-
-	.sysfs_setup_cb = apex_sysfs_setup_cb,
-	.sysfs_cleanup_cb = NULL,
-
 	.device_open_cb = apex_device_open_cb,
 	.device_close_cb = apex_device_cleanup,
 
@@ -672,13 +704,29 @@ static struct gasket_driver_desc apex_desc = {
 	.device_reset_cb = apex_reset,
 };
 
+static struct pci_driver apex_pci_driver = {
+	.name = "apex",
+	.probe = apex_pci_probe,
+	.remove = apex_pci_remove,
+	.id_table = apex_pci_ids,
+};
+
 static int __init apex_init(void)
 {
-	return gasket_register_device(&apex_desc);
+	int ret;
+
+	ret = gasket_register_device(&apex_desc);
+	if (ret)
+		return ret;
+	ret = pci_register_driver(&apex_pci_driver);
+	if (ret)
+		gasket_unregister_device(&apex_desc);
+	return ret;
 }
 
 static void apex_exit(void)
 {
+	pci_unregister_driver(&apex_pci_driver);
 	gasket_unregister_device(&apex_desc);
 }
 MODULE_DESCRIPTION("Google Apex driver");
