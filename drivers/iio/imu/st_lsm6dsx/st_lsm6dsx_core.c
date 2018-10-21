@@ -450,7 +450,7 @@ int st_lsm6dsx_check_odr(struct st_lsm6dsx_sensor *sensor, u16 odr, u8 *val)
 	int i;
 
 	for (i = 0; i < ST_LSM6DSX_ODR_LIST_SIZE; i++)
-		if (st_lsm6dsx_odr_table[sensor->id].odr_avl[i].hz == odr)
+		if (st_lsm6dsx_odr_table[sensor->id].odr_avl[i].hz >= odr)
 			break;
 
 	if (i == ST_LSM6DSX_ODR_LIST_SIZE)
@@ -461,50 +461,82 @@ int st_lsm6dsx_check_odr(struct st_lsm6dsx_sensor *sensor, u16 odr, u8 *val)
 	return 0;
 }
 
-static int st_lsm6dsx_set_odr(struct st_lsm6dsx_sensor *sensor, u16 odr)
+static u16 st_lsm6dsx_check_odr_dependency(struct st_lsm6dsx_hw *hw, u16 odr,
+					   enum st_lsm6dsx_sensor_id id)
 {
+	struct st_lsm6dsx_sensor *ref = iio_priv(hw->iio_devs[id]);
+	u16 ret;
+
+	if (odr > 0) {
+		if (hw->enable_mask & BIT(id))
+			ret = max_t(u16, ref->odr, odr);
+		else
+			ret = odr;
+	} else {
+		ret = (hw->enable_mask & BIT(id)) ? ref->odr : 0;
+	}
+	return ret;
+}
+
+static int st_lsm6dsx_set_odr(struct st_lsm6dsx_sensor *sensor, u16 req_odr)
+{
+	struct st_lsm6dsx_sensor *ref_sensor = sensor;
 	struct st_lsm6dsx_hw *hw = sensor->hw;
 	const struct st_lsm6dsx_reg *reg;
 	unsigned int data;
+	u8 val = 0;
 	int err;
-	u8 val;
 
-	err = st_lsm6dsx_check_odr(sensor, odr, &val);
-	if (err < 0)
-		return err;
+	switch (sensor->id) {
+	case ST_LSM6DSX_ID_EXT0:
+	case ST_LSM6DSX_ID_EXT1:
+	case ST_LSM6DSX_ID_EXT2:
+	case ST_LSM6DSX_ID_ACC: {
+		u16 odr;
+		int i;
 
-	reg = &st_lsm6dsx_odr_table[sensor->id].reg;
+		/* use acc as trigger for ext devices */
+		ref_sensor = iio_priv(hw->iio_devs[ST_LSM6DSX_ID_ACC]);
+		for (i = ST_LSM6DSX_ID_ACC; i < ST_LSM6DSX_ID_MAX; i++) {
+			if (!hw->iio_devs[i] || i == sensor->id)
+				continue;
+			odr = st_lsm6dsx_check_odr_dependency(hw, req_odr, i);
+			if (odr != req_odr)
+				/* device already configured */
+				return 0;
+		}
+		break;
+	}
+	default:
+		break;
+	}
+
+	if (req_odr > 0) {
+		err = st_lsm6dsx_check_odr(ref_sensor, req_odr, &val);
+		if (err < 0)
+			return err;
+	}
+
+	reg = &st_lsm6dsx_odr_table[ref_sensor->id].reg;
 	data = ST_LSM6DSX_SHIFT_VAL(val, reg->mask);
 	return st_lsm6dsx_update_bits_locked(hw, reg->addr, reg->mask, data);
 }
 
-int st_lsm6dsx_sensor_enable(struct st_lsm6dsx_sensor *sensor)
-{
-	int err;
-
-	err = st_lsm6dsx_set_odr(sensor, sensor->odr);
-	if (err < 0)
-		return err;
-
-	sensor->hw->enable_mask |= BIT(sensor->id);
-
-	return 0;
-}
-
-int st_lsm6dsx_sensor_disable(struct st_lsm6dsx_sensor *sensor)
+int st_lsm6dsx_sensor_set_enable(struct st_lsm6dsx_sensor *sensor,
+				 bool enable)
 {
 	struct st_lsm6dsx_hw *hw = sensor->hw;
-	const struct st_lsm6dsx_reg *reg;
-	unsigned int data;
+	u16 odr = enable ? sensor->odr : 0;
 	int err;
 
-	reg = &st_lsm6dsx_odr_table[sensor->id].reg;
-	data = ST_LSM6DSX_SHIFT_VAL(0, reg->mask);
-	err = st_lsm6dsx_update_bits_locked(hw, reg->addr, reg->mask, data);
+	err = st_lsm6dsx_set_odr(sensor, odr);
 	if (err < 0)
 		return err;
 
-	sensor->hw->enable_mask &= ~BIT(sensor->id);
+	if (enable)
+		hw->enable_mask |= BIT(sensor->id);
+	else
+		hw->enable_mask &= ~BIT(sensor->id);
 
 	return 0;
 }
@@ -516,7 +548,7 @@ static int st_lsm6dsx_read_oneshot(struct st_lsm6dsx_sensor *sensor,
 	int err, delay;
 	__le16 data;
 
-	err = st_lsm6dsx_sensor_enable(sensor);
+	err = st_lsm6dsx_sensor_set_enable(sensor, true);
 	if (err < 0)
 		return err;
 
@@ -527,7 +559,7 @@ static int st_lsm6dsx_read_oneshot(struct st_lsm6dsx_sensor *sensor,
 	if (err < 0)
 		return err;
 
-	st_lsm6dsx_sensor_disable(sensor);
+	st_lsm6dsx_sensor_set_enable(sensor, false);
 
 	*val = (s16)le16_to_cpu(data);
 
@@ -892,7 +924,7 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id, const char *name,
 	if (err < 0)
 		return err;
 
-	for (i = 0; i < ST_LSM6DSX_ID_MAX; i++) {
+	for (i = 0; i < ST_LSM6DSX_ID_EXT0; i++) {
 		hw->iio_devs[i] = st_lsm6dsx_alloc_iiodev(hw, i, name);
 		if (!hw->iio_devs[i])
 			return -ENOMEM;
@@ -909,6 +941,9 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id, const char *name,
 	}
 
 	for (i = 0; i < ST_LSM6DSX_ID_MAX; i++) {
+		if (!hw->iio_devs[i])
+			continue;
+
 		err = devm_iio_device_register(hw->dev, hw->iio_devs[i]);
 		if (err)
 			return err;
@@ -927,6 +962,9 @@ static int __maybe_unused st_lsm6dsx_suspend(struct device *dev)
 	int i, err = 0;
 
 	for (i = 0; i < ST_LSM6DSX_ID_MAX; i++) {
+		if (!hw->iio_devs[i])
+			continue;
+
 		sensor = iio_priv(hw->iio_devs[i]);
 		if (!(hw->enable_mask & BIT(sensor->id)))
 			continue;
@@ -952,6 +990,9 @@ static int __maybe_unused st_lsm6dsx_resume(struct device *dev)
 	int i, err = 0;
 
 	for (i = 0; i < ST_LSM6DSX_ID_MAX; i++) {
+		if (!hw->iio_devs[i])
+			continue;
+
 		sensor = iio_priv(hw->iio_devs[i]);
 		if (!(hw->enable_mask & BIT(sensor->id)))
 			continue;

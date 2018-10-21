@@ -105,8 +105,11 @@ struct st_lsm6dsx_settings {
 };
 
 enum st_lsm6dsx_sensor_id {
-	ST_LSM6DSX_ID_ACC,
 	ST_LSM6DSX_ID_GYRO,
+	ST_LSM6DSX_ID_ACC,
+	ST_LSM6DSX_ID_EXT0,
+	ST_LSM6DSX_ID_EXT1,
+	ST_LSM6DSX_ID_EXT2,
 	ST_LSM6DSX_ID_MAX,
 };
 
@@ -182,8 +185,8 @@ extern const struct dev_pm_ops st_lsm6dsx_pm_ops;
 
 int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id, const char *name,
 		     struct regmap *regmap);
-int st_lsm6dsx_sensor_enable(struct st_lsm6dsx_sensor *sensor);
-int st_lsm6dsx_sensor_disable(struct st_lsm6dsx_sensor *sensor);
+int st_lsm6dsx_sensor_set_enable(struct st_lsm6dsx_sensor *sensor,
+				 bool enable);
 int st_lsm6dsx_fifo_setup(struct st_lsm6dsx_hw *hw);
 int st_lsm6dsx_set_watermark(struct iio_dev *iio_dev, unsigned int val);
 int st_lsm6dsx_update_watermark(struct st_lsm6dsx_sensor *sensor,
