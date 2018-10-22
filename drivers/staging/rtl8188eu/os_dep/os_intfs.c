@@ -245,7 +245,8 @@ static unsigned int rtw_classify8021d(struct sk_buff *skb)
 }
 
 static u16 rtw_select_queue(struct net_device *dev, struct sk_buff *skb,
-			    void *accel_priv, select_queue_fallback_t fallback)
+			    struct net_device *sb_dev,
+			    select_queue_fallback_t fallback)
 {
 	struct adapter	*padapter = rtw_netdev_priv(dev);
 	struct mlme_priv *pmlmepriv = &padapter->mlmepriv;
@@ -311,7 +312,7 @@ struct net_device *rtw_init_netdev(struct adapter *old_padapter)
 
 	RT_TRACE(_module_os_intfs_c_, _drv_info_, ("+init_net_dev\n"));
 
-	if (old_padapter != NULL)
+	if (old_padapter)
 		pnetdev = rtw_alloc_etherdev_with_old_priv((void *)old_padapter);
 
 	if (!pnetdev)
@@ -355,7 +356,6 @@ void rtw_stop_drv_threads(struct adapter *padapter)
 	complete(&padapter->cmdpriv.cmd_queue_comp);
 	if (padapter->cmdThread)
 		wait_for_completion_interruptible(&padapter->cmdpriv.terminate_cmdthread_comp);
-
 }
 
 static u8 rtw_init_default_value(struct adapter *padapter)
@@ -433,7 +433,6 @@ u8 rtw_init_drv_sw(struct adapter *padapter)
 {
 	u8	ret8 = _SUCCESS;
 
-
 	RT_TRACE(_module_os_intfs_c_, _drv_info_, ("+rtw_init_drv_sw\n"));
 
 	if ((rtw_init_cmd_priv(&padapter->cmdpriv)) == _FAIL) {
@@ -489,7 +488,6 @@ u8 rtw_init_drv_sw(struct adapter *padapter)
 
 exit:
 	RT_TRACE(_module_os_intfs_c_, _drv_info_, ("-rtw_init_drv_sw\n"));
-
 
 	return ret8;
 }
@@ -645,14 +643,13 @@ int  ips_netdrv_open(struct adapter *padapter)
 	mod_timer(&padapter->mlmepriv.dynamic_chk_timer,
 		  jiffies + msecs_to_jiffies(5000));
 
-	 return _SUCCESS;
+	return _SUCCESS;
 
 netdev_open_error:
 	DBG_88E("-ips_netdrv_open - drv_open failure, bup =%d\n", padapter->bup);
 
 	return _FAIL;
 }
-
 
 int rtw_ips_pwr_up(struct adapter *padapter)
 {

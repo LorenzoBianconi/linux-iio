@@ -10,8 +10,8 @@
 
 /* include HAL Related header after HAL Related compiling flags */
 #include "rtl8188e_spec.h"
-#include "Hal8188EPhyReg.h"
-#include "Hal8188EPhyCfg.h"
+#include "hal8188e_phy_reg.h"
+#include "hal8188e_phy_cfg.h"
 #include "rtl8188e_dm.h"
 #include "rtl8188e_recv.h"
 #include "rtl8188e_xmit.h"
