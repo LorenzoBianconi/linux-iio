@@ -68,6 +68,9 @@ enum st_lsm6dsx_fifo_tag {
 	ST_LSM6DSX_GYRO_TAG = 0x01,
 	ST_LSM6DSX_ACC_TAG = 0x02,
 	ST_LSM6DSX_TS_TAG = 0x04,
+	ST_LSM6DSX_EXT0_TAG = 0x0f,
+	ST_LSM6DSX_EXT1_TAG = 0x10,
+	ST_LSM6DSX_EXT2_TAG = 0x11,
 };
 
 static const
@@ -453,6 +456,52 @@ int st_lsm6dsx_read_fifo(struct st_lsm6dsx_hw *hw)
 	return read_len;
 }
 
+static int
+st_lsm6dsx_push_tagged_data(struct st_lsm6dsx_hw *hw, u8 tag,
+			    u8 *data, s64 ts)
+{
+	struct st_lsm6dsx_sensor *sensor;
+	struct iio_dev *iio_dev;
+
+	switch (tag) {
+	case ST_LSM6DSX_GYRO_TAG:
+		iio_dev = hw->iio_devs[ST_LSM6DSX_ID_GYRO];
+		sensor = iio_priv(iio_dev);
+		break;
+	case ST_LSM6DSX_ACC_TAG:
+		iio_dev = hw->iio_devs[ST_LSM6DSX_ID_ACC];
+		sensor = iio_priv(iio_dev);
+		break;
+	case ST_LSM6DSX_EXT0_TAG:
+		if (hw->enable_mask & BIT(ST_LSM6DSX_ID_EXT0))
+			iio_dev = hw->iio_devs[ST_LSM6DSX_ID_EXT0];
+		else if (hw->enable_mask & BIT(ST_LSM6DSX_ID_EXT1))
+			iio_dev = hw->iio_devs[ST_LSM6DSX_ID_EXT1];
+		else
+			iio_dev = hw->iio_devs[ST_LSM6DSX_ID_EXT2];
+		sensor = iio_priv(hw->iio_devs[ST_LSM6DSX_ID_ACC]);
+		break;
+	case ST_LSM6DSX_EXT1_TAG:
+		if (hw->enable_mask & BIT(ST_LSM6DSX_ID_EXT1))
+			iio_dev = hw->iio_devs[ST_LSM6DSX_ID_EXT1];
+		else
+			iio_dev = hw->iio_devs[ST_LSM6DSX_ID_EXT2];
+		sensor = iio_priv(hw->iio_devs[ST_LSM6DSX_ID_ACC]);
+		break;
+	case ST_LSM6DSX_EXT2_TAG:
+		iio_dev = hw->iio_devs[ST_LSM6DSX_ID_EXT2];
+		sensor = iio_priv(hw->iio_devs[ST_LSM6DSX_ID_ACC]);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	iio_push_to_buffers_with_timestamp(iio_dev, data,
+					   ts + sensor->ts_ref);
+
+	return 0;
+}
+
 /**
  * st_lsm6dsx_read_tagged_fifo() - LSM6DSO read FIFO routine
  * @hw: Pointer to instance of struct st_lsm6dsx_hw.
@@ -508,8 +557,7 @@ int st_lsm6dsx_read_tagged_fifo(struct st_lsm6dsx_hw *hw)
 			       ST_LSM6DSX_SAMPLE_SIZE);
 
 			tag = hw->buff[i] >> 3;
-			switch (tag) {
-			case ST_LSM6DSX_TS_TAG:
+			if (tag == ST_LSM6DSX_TS_TAG) {
 				/*
 				 * hw timestamp is 4B long and it is stored
 				 * in FIFO according to this schema:
@@ -526,19 +574,9 @@ int st_lsm6dsx_read_tagged_fifo(struct st_lsm6dsx_hw *hw)
 				if (!reset_ts && ts >= 0xffff0000)
 					reset_ts = true;
 				ts *= ST_LSM6DSX_TS_SENSITIVITY;
-				break;
-			case ST_LSM6DSX_GYRO_TAG:
-				iio_push_to_buffers_with_timestamp(
-					hw->iio_devs[ST_LSM6DSX_ID_GYRO],
-					iio_buff, gyro_sensor->ts_ref + ts);
-				break;
-			case ST_LSM6DSX_ACC_TAG:
-				iio_push_to_buffers_with_timestamp(
-					hw->iio_devs[ST_LSM6DSX_ID_ACC],
-					iio_buff, acc_sensor->ts_ref + ts);
-				break;
-			default:
-				break;
+			} else {
+				st_lsm6dsx_push_tagged_data(hw, tag, iio_buff,
+							    ts);
 			}
 		}
 	}
@@ -574,13 +612,19 @@ static int st_lsm6dsx_update_fifo(struct iio_dev *iio_dev, bool enable)
 			goto out;
 	}
 
-	err = st_lsm6dsx_sensor_set_enable(sensor, enable);
-	if (err < 0)
-		goto out;
+	if (sensor->id == ST_LSM6DSX_ID_EXT0 ||
+	    sensor->id == ST_LSM6DSX_ID_EXT1 ||
+	    sensor->id == ST_LSM6DSX_ID_EXT2) {
+		st_lsm6dsx_shub_set_enable(sensor, enable);
+	} else {
+		err = st_lsm6dsx_sensor_set_enable(sensor, enable);
+		if (err < 0)
+			goto out;
 
-	err = st_lsm6dsx_set_fifo_odr(sensor, enable);
-	if (err < 0)
-		goto out;
+		err = st_lsm6dsx_set_fifo_odr(sensor, enable);
+		if (err < 0)
+			goto out;
+	}
 
 	err = st_lsm6dsx_update_decimators(hw);
 	if (err < 0)
