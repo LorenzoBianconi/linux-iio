@@ -10,10 +10,18 @@
  *
  * This file assumes 4kB pages throughout; can be factored out when necessary.
  *
- * Address format is as follows:
+ * There is a configurable number of page table entries, as well as a
+ * configurable bit index for the extended address flag. Both of these are
+ * specified in gasket_page_table_init through the page_table_config parameter.
+ *
+ * The following example assumes:
+ *   page_table_config->total_entries = 8192
+ *   page_table_config->extended_bit = 63
+ *
+ * Address format:
  * Simple addresses - those whose containing pages are directly placed in the
  * device's address translation registers - are laid out as:
- * [ 63 - 40: Unused | 39 - 28: 0 | 27 - 12: page index | 11 - 0: page offset ]
+ * [ 63 - 25: 0 | 24 - 12: page index | 11 - 0: page offset ]
  * page index:  The index of the containing page in the device's address
  *              translation registers.
  * page offset: The index of the address into the containing page.
@@ -21,7 +29,7 @@
  * Extended address - those whose containing pages are contained in a second-
  * level page table whose address is present in the device's address translation
  * registers - are laid out as:
- * [ 63 - 40: Unused | 39: flag | 38 - 37: 0 | 36 - 21: dev/level 0 index |
+ * [ 63: flag | 62 - 34: 0 | 33 - 21: dev/level 0 index |
  *   20 - 12: host/level 1 index | 11 - 0: page offset ]
  * flag:        Marker indicating that this is an extended address. Always 1.
  * dev index:   The index of the first-level page in the device's extended
@@ -103,12 +111,6 @@ struct gasket_page_table_entry {
 	/* The status of this entry/slot: free or in use. */
 	enum pte_status status;
 
-	/* Address of the page in DMA space. */
-	dma_addr_t dma_addr;
-
-	/* Linux page descriptor for the page described by this structure. */
-	struct page *page;
-
 	/*
 	 * Index for alignment into host vaddrs.
 	 * When a user specifies a host address for a mapping, that address may
@@ -118,6 +120,12 @@ struct gasket_page_table_entry {
 	 * and page-aligned addresses.
 	 */
 	int offset;
+
+	/* Address of the page in DMA space. */
+	dma_addr_t dma_addr;
+
+	/* Linux page descriptor for the page described by this structure. */
+	struct page *page;
 
 	/*
 	 * If this is an extended and first-level entry, sublevel points
@@ -469,7 +477,6 @@ static int gasket_perform_mapping(struct gasket_page_table *pg_tbl,
 	for (i = 0; i < num_pages; i++) {
 		page_addr = host_addr + i * PAGE_SIZE;
 		offset = page_addr & (PAGE_SIZE - 1);
-		dev_dbg(pg_tbl->device, "%s i %d\n", __func__, i);
 		if (is_coherent(pg_tbl, host_addr)) {
 			u64 off =
 				(u64)host_addr -
@@ -498,29 +505,15 @@ static int gasket_perform_mapping(struct gasket_page_table *pg_tbl,
 			ptes[i].dma_addr =
 				dma_map_page(pg_tbl->device, page, 0, PAGE_SIZE,
 					     DMA_BIDIRECTIONAL);
-			dev_dbg(pg_tbl->device,
-				"%s i %d pte %p pfn %p -> mapped %llx\n",
-				__func__, i, &ptes[i],
-				(void *)page_to_pfn(page),
-				(unsigned long long)ptes[i].dma_addr);
 
 			if (dma_mapping_error(pg_tbl->device,
 					      ptes[i].dma_addr)) {
-				dev_dbg(pg_tbl->device,
-					"%s i %d -> fail to map page %llx "
-					"[pfn %p ohys %p]\n",
-					__func__, i,
-					(unsigned long long)ptes[i].dma_addr,
-					(void *)page_to_pfn(page),
-					(void *)page_to_phys(page));
-
-				/* clean up */
 				if (gasket_release_page(ptes[i].page))
 					--pg_tbl->num_active_pages;
 
 				memset(&ptes[i], 0,
 				       sizeof(struct gasket_page_table_entry));
-				return -1;
+				return -EINVAL;
 			}
 		}
 
@@ -624,7 +617,6 @@ static void gasket_perform_unmapping(struct gasket_page_table *pg_tbl,
 			if (gasket_release_page(ptes[i].page))
 				--pg_tbl->num_active_pages;
 		}
-		ptes[i].status = PTE_FREE;
 
 		/* and clear the PTE. */
 		memset(&ptes[i], 0, sizeof(struct gasket_page_table_entry));
@@ -689,38 +681,21 @@ static inline bool gasket_addr_is_simple(struct gasket_page_table *pg_tbl,
  * Convert (simple, page, offset) into a device address.
  * Examples:
  * Simple page 0, offset 32:
- *  Input (0, 0, 32), Output 0x20
+ *  Input (1, 0, 32), Output 0x20
  * Simple page 1000, offset 511:
- *  Input (0, 1000, 512), Output 0x3E81FF
+ *  Input (1, 1000, 511), Output 0x3E81FF
  * Extended page 0, offset 32:
  *  Input (0, 0, 32), Output 0x8000000020
  * Extended page 1000, offset 511:
- *  Input (1, 1000, 512), Output 0x8003E81FF
+ *  Input (0, 1000, 511), Output 0x8003E81FF
  */
 static ulong gasket_components_to_dev_address(struct gasket_page_table *pg_tbl,
 					      int is_simple, uint page_index,
 					      uint offset)
 {
-	ulong lvl0_index, lvl1_index;
+	ulong dev_addr = (page_index << GASKET_SIMPLE_PAGE_SHIFT) | offset;
 
-	if (is_simple) {
-		/* Return simple addresses directly. */
-		lvl0_index = page_index & (pg_tbl->config.total_entries - 1);
-		return (lvl0_index << GASKET_SIMPLE_PAGE_SHIFT) | offset;
-	}
-
-	/*
-	 * This could be compressed into fewer statements, but
-	 * A) the compiler should optimize it
-	 * B) this is not slow
-	 * C) this is an uncommon operation
-	 * D) this is actually readable this way.
-	 */
-	lvl0_index = page_index / GASKET_PAGES_PER_SUBTABLE;
-	lvl1_index = page_index & (GASKET_PAGES_PER_SUBTABLE - 1);
-	return (pg_tbl)->extended_flag |
-	       (lvl0_index << GASKET_EXTENDED_LVL0_SHIFT) |
-	       (lvl1_index << GASKET_EXTENDED_LVL1_SHIFT) | offset;
+	return is_simple ? dev_addr : (pg_tbl->extended_flag | dev_addr);
 }
 
 /*
@@ -903,11 +878,6 @@ static int gasket_alloc_extended_subtable(struct gasket_page_table *pg_tbl,
 	pte->dma_addr = dma_map_page(pg_tbl->device, pte->page, 0, PAGE_SIZE,
 				     DMA_TO_DEVICE);
 	if (dma_mapping_error(pg_tbl->device, pte->dma_addr)) {
-		dev_dbg(pg_tbl->device,
-			"%s: fail to map page [pfn %lx phys %llx]\n",
-			__func__, page_to_pfn(pte->page),
-			page_to_phys(pte->page));
-
 		free_page(page_addr);
 		vfree(pte->sublevel);
 		memset(pte, 0, sizeof(struct gasket_page_table_entry));
@@ -1061,11 +1031,6 @@ int gasket_page_table_map(struct gasket_page_table *pg_tbl, ulong host_addr,
 	}
 
 	mutex_unlock(&pg_tbl->mutex);
-
-	dev_dbg(pg_tbl->device,
-		"%s done: ha %llx daddr %llx num %d, ret %d\n",
-		__func__, (unsigned long long)host_addr,
-		(unsigned long long)dev_addr, num_pages, ret);
 	return ret;
 }
 EXPORT_SYMBOL(gasket_page_table_map);
@@ -1123,9 +1088,9 @@ void gasket_page_table_reset(struct gasket_page_table *pg_tbl)
 }
 
 /* See gasket_page_table.h for description. */
-int gasket_page_table_lookup_page(
-	struct gasket_page_table *pg_tbl, ulong dev_addr, struct page **ppage,
-	ulong *poffset)
+int gasket_page_table_lookup_page(struct gasket_page_table *pg_tbl,
+				  ulong dev_addr, struct page **ppage,
+				  ulong *poffset)
 {
 	uint page_num;
 	struct gasket_page_table_entry *pte;
@@ -1165,13 +1130,13 @@ fail:
 	*ppage = NULL;
 	*poffset = 0;
 	mutex_unlock(&pg_tbl->mutex);
-	return -1;
+	return -EINVAL;
 }
 
 /* See gasket_page_table.h for description. */
-bool gasket_page_table_are_addrs_bad(
-	struct gasket_page_table *pg_tbl, ulong host_addr, ulong dev_addr,
-	ulong bytes)
+bool gasket_page_table_are_addrs_bad(struct gasket_page_table *pg_tbl,
+				     ulong host_addr, ulong dev_addr,
+				     ulong bytes)
 {
 	if (host_addr & (PAGE_SIZE - 1)) {
 		dev_err(pg_tbl->device,
@@ -1185,8 +1150,8 @@ bool gasket_page_table_are_addrs_bad(
 EXPORT_SYMBOL(gasket_page_table_are_addrs_bad);
 
 /* See gasket_page_table.h for description. */
-bool gasket_page_table_is_dev_addr_bad(
-	struct gasket_page_table *pg_tbl, ulong dev_addr, ulong bytes)
+bool gasket_page_table_is_dev_addr_bad(struct gasket_page_table *pg_tbl,
+				       ulong dev_addr, ulong bytes)
 {
 	uint num_pages = bytes / PAGE_SIZE;
 
@@ -1261,9 +1226,8 @@ int gasket_page_table_system_status(struct gasket_page_table *page_table)
 }
 
 /* Record the host_addr to coherent dma memory mapping. */
-int gasket_set_user_virt(
-	struct gasket_dev *gasket_dev, u64 size, dma_addr_t dma_address,
-	ulong vma)
+int gasket_set_user_virt(struct gasket_dev *gasket_dev, u64 size,
+			 dma_addr_t dma_address, ulong vma)
 {
 	int j;
 	struct gasket_page_table *pg_tbl;
@@ -1313,11 +1277,11 @@ int gasket_alloc_coherent_memory(struct gasket_dev *gasket_dev, u64 size,
 
 	/* allocate the physical memory block */
 	gasket_dev->page_table[index]->coherent_pages =
-		kcalloc(num_pages, sizeof(struct gasket_coherent_page_entry),
+		kcalloc(num_pages,
+			sizeof(*gasket_dev->page_table[index]->coherent_pages),
 			GFP_KERNEL);
 	if (!gasket_dev->page_table[index]->coherent_pages)
 		goto nomem;
-	*dma_address = 0;
 
 	gasket_dev->coherent_buffer.length_bytes =
 		PAGE_SIZE * (num_pages);
@@ -1332,14 +1296,15 @@ int gasket_alloc_coherent_memory(struct gasket_dev *gasket_dev, u64 size,
 			(u64)mem + j * PAGE_SIZE;
 	}
 
-	if (*dma_address == 0)
-		goto nomem;
 	return 0;
 
 nomem:
 	if (mem) {
 		dma_free_coherent(gasket_get_device(gasket_dev),
 				  num_pages * PAGE_SIZE, mem, handle);
+		gasket_dev->coherent_buffer.length_bytes = 0;
+		gasket_dev->coherent_buffer.virt_base = NULL;
+		gasket_dev->coherent_buffer.phys_base = 0;
 	}
 
 	kfree(gasket_dev->page_table[index]->coherent_pages);
@@ -1380,8 +1345,7 @@ int gasket_free_coherent_memory(struct gasket_dev *gasket_dev, u64 size,
 }
 
 /* Release all coherent memory. */
-void gasket_free_coherent_memory_all(
-	struct gasket_dev *gasket_dev, u64 index)
+void gasket_free_coherent_memory_all(struct gasket_dev *gasket_dev, u64 index)
 {
 	if (!gasket_dev->page_table[index])
 		return;

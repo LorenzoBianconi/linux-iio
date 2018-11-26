@@ -52,7 +52,7 @@ static bool HalUsbSetQueuePipeMapping8188EUsb(struct adapter *adapt, u8 NumInPip
 
 	/*  All config other than above support one Bulk IN and one Interrupt IN. */
 
-	result = Hal_MappingOutPipe(adapt, NumOutPipe);
+	result = hal_mapping_out_pipe(adapt, NumOutPipe);
 
 	return result;
 }
@@ -980,7 +980,7 @@ u32 rtw_hal_inirp_init(struct adapter *Adapter)
 	/* issue Rx irp to receive data */
 	precvbuf = precvpriv->precv_buf;
 	for (i = 0; i < NR_RECVBUFF; i++) {
-		if (usb_read_port(Adapter, RECV_BULK_IN_ADDR, precvbuf) == false) {
+		if (!usb_read_port(Adapter, RECV_BULK_IN_ADDR, precvbuf)) {
 			RT_TRACE(_module_hci_hal_init_c_, _drv_err_, ("usb_rx_init: usb_read_port error\n"));
 			status = _FAIL;
 			goto exit;
@@ -1267,7 +1267,7 @@ void rtw_hal_set_hwreg(struct adapter *Adapter, u8 variable, u8 *val)
 			/*  Select RRSR (in Legacy-OFDM and CCK) */
 			/*  For 8190, we select only 24M, 12M, 6M, 11M, 5.5M, 2M, and 1M from the Basic rate. */
 			/*  We do not use other rates. */
-			HalSetBrateCfg(Adapter, val, &BrateCfg);
+			hal_set_brate_cfg(val, &BrateCfg);
 			DBG_88E("HW_VAR_BASIC_RATE: BrateCfg(%#x)\n", BrateCfg);
 
 			/* 2011.03.30 add by Luke Lee */

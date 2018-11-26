@@ -36,7 +36,6 @@
 
 #include "interface/vchi/vchi_cfg.h"
 #include "interface/vchi/vchi_common.h"
-#include "interface/vchi/connections/connection.h"
 #include "vchi_mh.h"
 
 /******************************************************************************
@@ -77,20 +76,8 @@ typedef struct {
 typedef struct {
 	struct vchi_version version;
 	int32_t service_id;
-	VCHI_CONNECTION_T *connection;
-	uint32_t rx_fifo_size;
-	uint32_t tx_fifo_size;
 	VCHI_CALLBACK_T callback;
 	void *callback_param;
-	/* client intends to receive bulk transfers of
-		odd lengths or into unaligned buffers */
-	int32_t want_unaligned_bulk_rx;
-	/* client intends to transmit bulk transfers of
-		odd lengths or out of unaligned buffers */
-	int32_t want_unaligned_bulk_tx;
-	/* client wants to check CRCs on (bulk) xfers.
-		Only needs to be set at 1 end - will do both directions. */
-	int32_t want_crc;
 } SERVICE_CREATION_T;
 
 // Opaque handle for a VCHI instance
@@ -98,15 +85,6 @@ typedef struct opaque_vchi_instance_handle_t *VCHI_INSTANCE_T;
 
 // Opaque handle for a server or client
 typedef struct opaque_vchi_service_handle_t *VCHI_SERVICE_HANDLE_T;
-
-// Service registration & startup
-typedef void (*VCHI_SERVICE_INIT)(VCHI_INSTANCE_T initialise_instance, VCHI_CONNECTION_T **connections, uint32_t num_connections);
-
-typedef struct service_info_tag {
-   const char * const vll_filename; /* VLL to load to start this service. This is an empty string if VLL is "static" */
-   VCHI_SERVICE_INIT init;          /* Service initialisation function */
-   void *vll_handle;                /* VLL handle; NULL when unloaded or a "static VLL" in build */
-} SERVICE_INFO_T;
 
 /******************************************************************************
  Global funcs - implementation is specific to which side you are on (local / remote)
@@ -116,25 +94,16 @@ typedef struct service_info_tag {
 extern "C" {
 #endif
 
-extern /*@observer@*/ VCHI_CONNECTION_T *vchi_create_connection(const VCHI_CONNECTION_API_T *function_table,
-								 const VCHI_MESSAGE_DRIVER_T *low_level);
-
 // Routine used to initialise the vchi on both local + remote connections
 extern int32_t vchi_initialise(VCHI_INSTANCE_T *instance_handle);
 
 extern int32_t vchi_exit(void);
 
-extern int32_t vchi_connect(VCHI_CONNECTION_T **connections,
-			    const uint32_t num_connections,
-			    VCHI_INSTANCE_T instance_handle);
+extern int32_t vchi_connect(VCHI_INSTANCE_T instance_handle);
 
 //When this is called, ensure that all services have no data pending.
 //Bulk transfers can remain 'queued'
 extern int32_t vchi_disconnect(VCHI_INSTANCE_T instance_handle);
-
-// Global control over bulk CRC checking
-extern int32_t vchi_crc_control(VCHI_CONNECTION_T *connection,
-				VCHI_CRC_CONTROL_T control);
 
 // helper functions
 extern void *vchi_allocate_buffer(VCHI_SERVICE_HANDLE_T handle, uint32_t *length);
@@ -291,14 +260,6 @@ extern int32_t vchi_bulk_queue_transmit(VCHI_SERVICE_HANDLE_T handle,
 /******************************************************************************
  Configuration plumbing
  *****************************************************************************/
-
-// function prototypes for the different mid layers (the state info gives the different physical connections)
-extern const VCHI_CONNECTION_API_T *single_get_func_table(void);
-//extern const VCHI_CONNECTION_API_T *local_server_get_func_table(void);
-//extern const VCHI_CONNECTION_API_T *local_client_get_func_table(void);
-
-// declare all message drivers here
-const VCHI_MESSAGE_DRIVER_T *vchi_mphi_message_driver_func_table(void);
 
 #ifdef __cplusplus
 }

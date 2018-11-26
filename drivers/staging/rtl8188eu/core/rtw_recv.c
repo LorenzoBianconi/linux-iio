@@ -1229,7 +1229,7 @@ static int validate_recv_frame(struct adapter *adapter,
 		retval = _FAIL; /*  only data frame return _SUCCESS */
 		break;
 	case WIFI_DATA_TYPE: /* data */
-		LedControl8188eu(adapter, LED_CTL_RX);
+		led_control_8188eu(adapter, LED_CTL_RX);
 		pattrib->qos = (subtype & BIT(7)) ? 1 : 0;
 		retval = validate_recv_data_frame(adapter, precv_frame);
 		if (retval == _FAIL) {
@@ -1912,7 +1912,7 @@ static int recv_func_posthandle(struct adapter *padapter,
 	struct __queue *pfree_recv_queue = &padapter->recvpriv.free_recv_queue;
 
 	/*  DATA FRAME */
-	LedControl8188eu(padapter, LED_CTL_RX);
+	led_control_8188eu(padapter, LED_CTL_RX);
 
 	prframe = decryptor(padapter, prframe);
 	if (!prframe) {
@@ -2042,7 +2042,7 @@ static void rtw_signal_stat_timer_hdl(struct timer_list *t)
 	}
 
 	/* update value of signal_strength, rssi, signal_qual */
-	if (check_fwstate(&adapter->mlmepriv, _FW_UNDER_SURVEY) == false) {
+	if (!check_fwstate(&adapter->mlmepriv, _FW_UNDER_SURVEY)) {
 		tmp_s = avg_signal_strength +
 			(_alpha - 1) * recvpriv->signal_strength;
 		tmp_s = DIV_ROUND_UP(tmp_s, _alpha);
