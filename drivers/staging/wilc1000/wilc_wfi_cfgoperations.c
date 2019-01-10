@@ -32,14 +32,6 @@
 #define nl80211_SCAN_RESULT_EXPIRE	(3 * HZ)
 #define SCAN_RESULT_EXPIRE		(40 * HZ)
 
-static const u32 cipher_suites[] = {
-	WLAN_CIPHER_SUITE_WEP40,
-	WLAN_CIPHER_SUITE_WEP104,
-	WLAN_CIPHER_SUITE_TKIP,
-	WLAN_CIPHER_SUITE_CCMP,
-	WLAN_CIPHER_SUITE_AES_CMAC,
-};
-
 static const struct ieee80211_txrx_stypes
 	wilc_wfi_cfg80211_mgmt_types[NUM_NL80211_IFTYPES] = {
 	[NL80211_IFTYPE_STATION] = {
@@ -73,53 +65,6 @@ static const struct wiphy_wowlan_support wowlan_support = {
 	.flags = WIPHY_WOWLAN_ANY
 };
 
-#define CHAN2G(_channel, _freq, _flags) {	 \
-		.band             = NL80211_BAND_2GHZ, \
-		.center_freq      = (_freq),		 \
-		.hw_value         = (_channel),		 \
-		.flags            = (_flags),		 \
-		.max_antenna_gain = 0,			 \
-		.max_power        = 30,			 \
-}
-
-static struct ieee80211_channel ieee80211_2ghz_channels[] = {
-	CHAN2G(1,  2412, 0),
-	CHAN2G(2,  2417, 0),
-	CHAN2G(3,  2422, 0),
-	CHAN2G(4,  2427, 0),
-	CHAN2G(5,  2432, 0),
-	CHAN2G(6,  2437, 0),
-	CHAN2G(7,  2442, 0),
-	CHAN2G(8,  2447, 0),
-	CHAN2G(9,  2452, 0),
-	CHAN2G(10, 2457, 0),
-	CHAN2G(11, 2462, 0),
-	CHAN2G(12, 2467, 0),
-	CHAN2G(13, 2472, 0),
-	CHAN2G(14, 2484, 0),
-};
-
-#define RATETAB_ENT(_rate, _hw_value, _flags) {	\
-		.bitrate  = (_rate),			\
-		.hw_value = (_hw_value),		\
-		.flags    = (_flags),			\
-}
-
-static struct ieee80211_rate ieee80211_bitrates[] = {
-	RATETAB_ENT(10,  0,  0),
-	RATETAB_ENT(20,  1,  0),
-	RATETAB_ENT(55,  2,  0),
-	RATETAB_ENT(110, 3,  0),
-	RATETAB_ENT(60,  9,  0),
-	RATETAB_ENT(90,  6,  0),
-	RATETAB_ENT(120, 7,  0),
-	RATETAB_ENT(180, 8,  0),
-	RATETAB_ENT(240, 9,  0),
-	RATETAB_ENT(360, 10, 0),
-	RATETAB_ENT(480, 11, 0),
-	RATETAB_ENT(540, 12, 0),
-};
-
 struct p2p_mgmt_data {
 	int size;
 	u8 *buff;
@@ -129,13 +74,6 @@ static u8 wlan_channel = INVALID_CHANNEL;
 static u8 curr_channel;
 static u8 p2p_oui[] = {0x50, 0x6f, 0x9A, 0x09};
 static u8 p2p_vendor_spec[] = {0xdd, 0x05, 0x00, 0x08, 0x40, 0x03};
-
-static struct ieee80211_supported_band wilc_band_2ghz = {
-	.channels = ieee80211_2ghz_channels,
-	.n_channels = ARRAY_SIZE(ieee80211_2ghz_channels),
-	.bitrates = ieee80211_bitrates,
-	.n_bitrates = ARRAY_SIZE(ieee80211_bitrates),
-};
 
 #define AGING_TIME	(9 * 1000)
 #define DURING_IP_TIME_OUT	15000
@@ -609,8 +547,10 @@ static int scan(struct wiphy *wiphy, struct cfg80211_scan_request *request)
 
 		if (request->n_ssids >= 1) {
 			if (wilc_wfi_cfg_alloc_fill_ssid(request,
-							 &hidden_ntwk))
-				return -ENOMEM;
+							 &hidden_ntwk)) {
+				ret = -ENOMEM;
+				goto out;
+			}
 
 			ret = wilc_scan(vif, WILC_FW_USER_SCAN,
 					WILC_FW_ACTIVE_SCAN, scan_ch_list,
@@ -630,8 +570,11 @@ static int scan(struct wiphy *wiphy, struct cfg80211_scan_request *request)
 		netdev_err(priv->dev, "Requested scanned channels over\n");
 	}
 
-	if (ret != 0)
-		ret = -EBUSY;
+out:
+	if (ret) {
+		priv->scan_req = NULL;
+		priv->cfg_scanning = false;
+	}
 
 	return ret;
 }
@@ -781,6 +724,8 @@ static int connect(struct wiphy *wiphy, struct net_device *dev,
 
 		netdev_err(dev, "wilc_set_join_req(): Error\n");
 		ret = -ENOENT;
+		if (!wfi_drv->p2p_connect)
+			wlan_channel = INVALID_CHANNEL;
 		wilc_wlan_set_bssid(dev, null_bssid, WILC_STATION_MODE);
 		goto out_error;
 	}
@@ -822,7 +767,7 @@ static int disconnect(struct wiphy *wiphy, struct net_device *dev,
 	priv->p2p.is_wilc_ie = false;
 	wfi_drv->p2p_timeout = 0;
 
-	ret = wilc_disconnect(vif, reason_code);
+	ret = wilc_disconnect(vif);
 	if (ret != 0) {
 		netdev_err(priv->dev, "Error in disconnecting\n");
 		ret = -EINVAL;
@@ -1101,7 +1046,7 @@ static int get_station(struct wiphy *wiphy, struct net_device *dev,
 	} else if (vif->iftype == WILC_STATION_MODE) {
 		struct rf_info stats;
 
-		wilc_get_statistics(vif, &stats, true);
+		wilc_get_statistics(vif, &stats);
 
 		sinfo->filled |= BIT_ULL(NL80211_STA_INFO_SIGNAL) |
 				 BIT_ULL(NL80211_STA_INFO_RX_PACKETS) |
@@ -1233,7 +1178,7 @@ static int del_pmksa(struct wiphy *wiphy, struct net_device *netdev,
 		if (!memcmp(pmksa->bssid, priv->pmkid_list.pmkidlist[i].bssid,
 			    ETH_ALEN)) {
 			memset(&priv->pmkid_list.pmkidlist[i], 0,
-			       sizeof(struct host_if_pmkid));
+			       sizeof(struct wilc_pmkid));
 			break;
 		}
 	}
@@ -1259,7 +1204,7 @@ static int flush_pmksa(struct wiphy *wiphy, struct net_device *netdev)
 {
 	struct wilc_priv *priv = wiphy_priv(wiphy);
 
-	memset(&priv->pmkid_list, 0, sizeof(struct host_if_pmkid_attr));
+	memset(&priv->pmkid_list, 0, sizeof(struct wilc_pmkid_attr));
 
 	return 0;
 }
@@ -1721,13 +1666,16 @@ static int dump_station(struct wiphy *wiphy, struct net_device *dev,
 {
 	struct wilc_priv *priv = wiphy_priv(wiphy);
 	struct wilc_vif *vif = netdev_priv(priv->dev);
+	int ret;
 
 	if (idx != 0)
 		return -ENOENT;
 
 	sinfo->filled |= BIT_ULL(NL80211_STA_INFO_SIGNAL);
 
-	wilc_get_rssi(vif, &sinfo->signal);
+	ret = wilc_get_rssi(vif, &sinfo->signal);
+	if (ret)
+		return ret;
 
 	memcpy(mac, priv->associated_bss, ETH_ALEN);
 	return 0;
@@ -1798,7 +1746,7 @@ static int change_virtual_intf(struct wiphy *wiphy, struct net_device *dev,
 
 		if (wl->initialized) {
 			wilc_set_wfi_drv_handler(vif, wilc_get_vif_idx(vif),
-						 0, vif->ifc_id, false);
+						 0, vif->ifc_id);
 			wilc_set_operation_mode(vif, WILC_AP_MODE);
 			wilc_set_power_mgmt(vif, 0, 0);
 		}
@@ -1830,11 +1778,9 @@ static int start_ap(struct wiphy *wiphy, struct net_device *dev,
 {
 	struct wilc_vif *vif = netdev_priv(dev);
 	struct wilc *wl = vif->wilc;
-	struct cfg80211_beacon_data *beacon = &settings->beacon;
 	int ret;
 
 	ret = set_channel(wiphy, &settings->chandef);
-
 	if (ret != 0)
 		netdev_err(dev, "Error in setting channel\n");
 
@@ -1842,9 +1788,7 @@ static int start_ap(struct wiphy *wiphy, struct net_device *dev,
 	wilc_set_power_mgmt(vif, 0, 0);
 
 	return wilc_add_beacon(vif, settings->beacon_interval,
-				   settings->dtim_period, beacon->head_len,
-				   (u8 *)beacon->head, beacon->tail_len,
-				   (u8 *)beacon->tail);
+				   settings->dtim_period, &settings->beacon);
 }
 
 static int change_beacon(struct wiphy *wiphy, struct net_device *dev,
@@ -1853,9 +1797,7 @@ static int change_beacon(struct wiphy *wiphy, struct net_device *dev,
 	struct wilc_priv *priv = wiphy_priv(wiphy);
 	struct wilc_vif *vif = netdev_priv(priv->dev);
 
-	return wilc_add_beacon(vif, 0, 0, beacon->head_len,
-				   (u8 *)beacon->head, beacon->tail_len,
-				   (u8 *)beacon->tail);
+	return wilc_add_beacon(vif, 0, 0, beacon);
 }
 
 static int stop_ap(struct wiphy *wiphy, struct net_device *dev)
@@ -1880,28 +1822,13 @@ static int add_station(struct wiphy *wiphy, struct net_device *dev,
 {
 	int ret = 0;
 	struct wilc_priv *priv = wiphy_priv(wiphy);
-	struct add_sta_param sta_params = { {0} };
 	struct wilc_vif *vif = netdev_priv(dev);
 
 	if (vif->iftype == WILC_AP_MODE || vif->iftype == WILC_GO_MODE) {
-		memcpy(sta_params.bssid, mac, ETH_ALEN);
 		memcpy(priv->assoc_stainfo.sta_associated_bss[params->aid], mac,
 		       ETH_ALEN);
-		sta_params.aid = params->aid;
-		sta_params.rates_len = params->supported_rates_len;
-		sta_params.rates = params->supported_rates;
 
-		if (!params->ht_capa) {
-			sta_params.ht_supported = false;
-		} else {
-			sta_params.ht_supported = true;
-			sta_params.ht_capa = *params->ht_capa;
-		}
-
-		sta_params.flags_mask = params->sta_flags_mask;
-		sta_params.flags_set = params->sta_flags_set;
-
-		ret = wilc_add_station(vif, &sta_params);
+		ret = wilc_add_station(vif, mac, params);
 		if (ret)
 			netdev_err(dev, "Host add station fail\n");
 	}
@@ -1936,26 +1863,10 @@ static int change_station(struct wiphy *wiphy, struct net_device *dev,
 			  const u8 *mac, struct station_parameters *params)
 {
 	int ret = 0;
-	struct add_sta_param sta_params = { {0} };
 	struct wilc_vif *vif = netdev_priv(dev);
 
 	if (vif->iftype == WILC_AP_MODE || vif->iftype == WILC_GO_MODE) {
-		memcpy(sta_params.bssid, mac, ETH_ALEN);
-		sta_params.aid = params->aid;
-		sta_params.rates_len = params->supported_rates_len;
-		sta_params.rates = params->supported_rates;
-
-		if (!params->ht_capa) {
-			sta_params.ht_supported = false;
-		} else {
-			sta_params.ht_supported = true;
-			sta_params.ht_capa = *params->ht_capa;
-		}
-
-		sta_params.flags_mask = params->sta_flags_mask;
-		sta_params.flags_set = params->sta_flags_set;
-
-		ret = wilc_edit_station(vif, &sta_params);
+		ret = wilc_edit_station(vif, mac, params);
 		if (ret)
 			netdev_err(dev, "Host edit station fail\n");
 	}
@@ -2110,14 +2021,6 @@ static struct wireless_dev *wilc_wfi_cfg_alloc(void)
 	if (!wdev->wiphy)
 		goto free_mem;
 
-	wilc_band_2ghz.ht_cap.ht_supported = 1;
-	wilc_band_2ghz.ht_cap.cap |= (1 << IEEE80211_HT_CAP_RX_STBC_SHIFT);
-	wilc_band_2ghz.ht_cap.mcs.rx_mask[0] = 0xff;
-	wilc_band_2ghz.ht_cap.ampdu_factor = IEEE80211_HT_MAX_AMPDU_8K;
-	wilc_band_2ghz.ht_cap.ampdu_density = IEEE80211_HT_MPDU_DENSITY_NONE;
-
-	wdev->wiphy->bands[NL80211_BAND_2GHZ] = &wilc_band_2ghz;
-
 	return wdev;
 
 free_mem:
@@ -2141,6 +2044,22 @@ struct wireless_dev *wilc_create_wiphy(struct net_device *net,
 
 	priv = wdev_priv(wdev);
 	priv->wdev = wdev;
+
+	memcpy(priv->bitrates, wilc_bitrates, sizeof(wilc_bitrates));
+	memcpy(priv->channels, wilc_2ghz_channels, sizeof(wilc_2ghz_channels));
+	priv->band.bitrates = priv->bitrates;
+	priv->band.n_bitrates = ARRAY_SIZE(priv->bitrates);
+	priv->band.channels = priv->channels;
+	priv->band.n_channels = ARRAY_SIZE(wilc_2ghz_channels);
+
+	priv->band.ht_cap.ht_supported = 1;
+	priv->band.ht_cap.cap |= (1 << IEEE80211_HT_CAP_RX_STBC_SHIFT);
+	priv->band.ht_cap.mcs.rx_mask[0] = 0xff;
+	priv->band.ht_cap.ampdu_factor = IEEE80211_HT_MAX_AMPDU_8K;
+	priv->band.ht_cap.ampdu_density = IEEE80211_HT_MPDU_DENSITY_NONE;
+
+	wdev->wiphy->bands[NL80211_BAND_2GHZ] = &priv->band;
+
 	wdev->wiphy->max_scan_ssids = WILC_MAX_NUM_PROBED_SSID;
 #ifdef CONFIG_PM
 	wdev->wiphy->wowlan = &wowlan_support;
@@ -2148,8 +2067,10 @@ struct wireless_dev *wilc_create_wiphy(struct net_device *net,
 	wdev->wiphy->max_num_pmkids = WILC_MAX_NUM_PMKIDS;
 	wdev->wiphy->max_scan_ie_len = 1000;
 	wdev->wiphy->signal_type = CFG80211_SIGNAL_TYPE_MBM;
-	wdev->wiphy->cipher_suites = cipher_suites;
-	wdev->wiphy->n_cipher_suites = ARRAY_SIZE(cipher_suites);
+	memcpy(priv->cipher_suites, wilc_cipher_suites,
+	       sizeof(wilc_cipher_suites));
+	wdev->wiphy->cipher_suites = priv->cipher_suites;
+	wdev->wiphy->n_cipher_suites = ARRAY_SIZE(wilc_cipher_suites);
 	wdev->wiphy->mgmt_stypes = wilc_wfi_cfg80211_mgmt_types;
 
 	wdev->wiphy->max_remain_on_channel_duration = 500;

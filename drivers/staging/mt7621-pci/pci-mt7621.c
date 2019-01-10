@@ -16,7 +16,6 @@
  */
 
 #include <linux/bitops.h>
-#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/iopoll.h>
 #include <linux/module.h>
@@ -167,7 +166,6 @@
  * @pcie: pointer to PCIe host info
  * @phy_reg_offset: offset to related phy registers
  * @pcie_rst: pointer to port reset control
- * @pcie_clk: PCIe clock
  * @slot: port slot
  * @enabled: indicates if port is enabled
  */
@@ -177,7 +175,6 @@ struct mt7621_pcie_port {
 	struct mt7621_pcie *pcie;
 	u32 phy_reg_offset;
 	struct reset_control *pcie_rst;
-	struct clk *pcie_clk;
 	u32 slot;
 	bool enabled;
 };
@@ -185,7 +182,6 @@ struct mt7621_pcie_port {
 /**
  * struct mt7621_pcie - PCIe host information
  * @base: IO Mapped Register Base
- * @sysctl: system control mapped register base
  * @io: IO resource
  * @mem: non-prefetchable memory resource
  * @busn: bus range
@@ -195,7 +191,6 @@ struct mt7621_pcie_port {
  */
 struct mt7621_pcie {
 	void __iomem *base;
-	void __iomem *sysctl;
 	struct device *dev;
 	struct resource io;
 	struct resource mem;
@@ -407,12 +402,38 @@ static void set_phy_for_ssc(struct mt7621_pcie_port *port)
 
 static void mt7621_enable_phy(struct mt7621_pcie_port *port)
 {
-	struct mt7621_pcie *pcie = port->pcie;
-	u32 chip_rev_id = ioread32(pcie->sysctl + MT7621_CHIP_REV_ID);
+	u32 chip_rev_id = rt_sysc_r32(MT7621_CHIP_REV_ID);
 
 	if ((chip_rev_id & 0xFFFF) == CHIP_REV_MT7621_E2)
 		bypass_pipe_rst(port);
 	set_phy_for_ssc(port);
+}
+
+static inline void mt7621_control_assert(struct mt7621_pcie_port *port)
+{
+	u32 chip_rev_id = rt_sysc_r32(MT7621_CHIP_REV_ID);
+
+	if ((chip_rev_id & 0xFFFF) == CHIP_REV_MT7621_E2)
+		reset_control_assert(port->pcie_rst);
+	else
+		reset_control_deassert(port->pcie_rst);
+}
+
+static inline void mt7621_control_deassert(struct mt7621_pcie_port *port)
+{
+	u32 chip_rev_id = rt_sysc_r32(MT7621_CHIP_REV_ID);
+
+	if ((chip_rev_id & 0xFFFF) == CHIP_REV_MT7621_E2)
+		reset_control_deassert(port->pcie_rst);
+	else
+		reset_control_assert(port->pcie_rst);
+}
+
+static void mt7621_reset_port(struct mt7621_pcie_port *port)
+{
+	mt7621_control_assert(port);
+	msleep(100);
+	mt7621_control_deassert(port);
 }
 
 static void setup_cm_memory_region(struct mt7621_pcie *pcie)
@@ -507,12 +528,6 @@ static int mt7621_pcie_parse_port(struct mt7621_pcie *pcie,
 		return PTR_ERR(port->base);
 
 	snprintf(name, sizeof(name), "pcie%d", slot);
-	port->pcie_clk = devm_clk_get(dev, name);
-	if (IS_ERR(port->pcie_clk)) {
-		dev_err(dev, "failed to get pcie%d clock\n", slot);
-		return PTR_ERR(port->pcie_clk);
-	}
-
 	port->pcie_rst = devm_reset_control_get_exclusive(dev, name);
 	if (PTR_ERR(port->pcie_rst) == -EPROBE_DEFER) {
 		dev_err(dev, "failed to get pcie%d reset control\n", slot);
@@ -548,16 +563,6 @@ static int mt7621_pcie_parse_dt(struct mt7621_pcie *pcie)
 	if (IS_ERR(pcie->base))
 		return PTR_ERR(pcie->base);
 
-	err = of_address_to_resource(node, 4, &regs);
-	if (err) {
-		dev_err(dev, "missing \"reg\" property\n");
-		return err;
-	}
-
-	pcie->sysctl = devm_ioremap_resource(dev, &regs);
-	if (IS_ERR(pcie->sysctl))
-		return PTR_ERR(pcie->sysctl);
-
 	for_each_available_child_of_node(node, child) {
 		int slot;
 
@@ -583,20 +588,19 @@ static int mt7621_pcie_init_port(struct mt7621_pcie_port *port)
 	struct device *dev = pcie->dev;
 	u32 slot = port->slot;
 	u32 val = 0;
-	int err;
 
-	err = clk_prepare_enable(port->pcie_clk);
-	if (err) {
-		dev_err(dev, "failed to enable pcie%d clock\n", slot);
-		return err;
-	}
+	/*
+	 * Any MT7621 Ralink pcie controller that doesn't have 0x0101 at
+	 * the end of the chip_id has inverted PCI resets.
+	 */
+	mt7621_reset_port(port);
 
-	reset_control_assert(port->pcie_rst);
-	reset_control_deassert(port->pcie_rst);
+	val = read_config(pcie, slot, PCIE_FTS_NUM);
+	dev_info(dev, "Port %d N_FTS = %x\n", (unsigned int)val, slot);
 
 	if ((pcie_port_read(port, RALINK_PCI_STATUS) & PCIE_PORT_LINKUP) == 0) {
 		dev_err(dev, "pcie%d no card, disable it (RST & CLK)\n", slot);
-		reset_control_assert(port->pcie_rst);
+		mt7621_control_assert(port);
 		rt_sysc_m32(PCIE_PORT_CLK_EN(slot), 0, RALINK_CLKCFG1);
 		port->enabled = false;
 	} else {
@@ -604,9 +608,6 @@ static int mt7621_pcie_init_port(struct mt7621_pcie_port *port)
 	}
 
 	mt7621_enable_phy(port);
-
-	val = read_config(pcie, slot, PCIE_FTS_NUM);
-	dev_info(dev, "Port %d N_FTS = %x\n", (unsigned int)val, slot);
 
 	return 0;
 }

@@ -205,11 +205,10 @@ void wilc_wlan_set_bssid(struct net_device *wilc_netdev, u8 *bssid, u8 mode)
 int wilc_wlan_get_num_conn_ifcs(struct wilc *wilc)
 {
 	u8 i = 0;
-	u8 null_bssid[6] = {0};
 	u8 ret_val = 0;
 
 	for (i = 0; i < wilc->vif_num; i++)
-		if (memcmp(wilc->vif[i]->bssid, null_bssid, 6))
+		if (!is_zero_ether_addr(wilc->vif[i]->bssid))
 			ret_val++;
 
 	return ret_val;
@@ -531,6 +530,7 @@ static void wlan_deinit_locks(struct net_device *dev)
 
 	mutex_destroy(&wilc->hif_cs);
 	mutex_destroy(&wilc->rxq_cs);
+	mutex_destroy(&wilc->cfg_cmd_lock);
 	mutex_destroy(&wilc->txq_add_to_head_cs);
 }
 
@@ -592,6 +592,7 @@ static void wlan_init_locks(struct net_device *dev)
 
 	mutex_init(&wl->hif_cs);
 	mutex_init(&wl->rxq_cs);
+	mutex_init(&wl->cfg_cmd_lock);
 
 	spin_lock_init(&wl->txq_spinlock);
 	mutex_init(&wl->txq_add_to_head_cs);
@@ -753,8 +754,7 @@ static int wilc_mac_open(struct net_device *ndev)
 	for (i = 0; i < wl->vif_num; i++) {
 		if (ndev == wl->vif[i]->ndev) {
 			wilc_set_wfi_drv_handler(vif, wilc_get_vif_idx(vif),
-						 vif->iftype, vif->ifc_id,
-						 false);
+						 vif->iftype, vif->ifc_id);
 			wilc_set_operation_mode(vif, vif->iftype);
 			break;
 		}
@@ -896,30 +896,10 @@ netdev_tx_t wilc_mac_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 static int wilc_mac_close(struct net_device *ndev)
 {
-	struct wilc_priv *priv;
 	struct wilc_vif *vif = netdev_priv(ndev);
-	struct host_if_drv *hif_drv;
-	struct wilc *wl;
-
-	if (!vif || !vif->ndev || !vif->ndev->ieee80211_ptr ||
-	    !vif->ndev->ieee80211_ptr->wiphy)
-		return 0;
-
-	priv = wiphy_priv(vif->ndev->ieee80211_ptr->wiphy);
-	wl = vif->wilc;
-
-	if (!priv)
-		return 0;
-
-	hif_drv = (struct host_if_drv *)priv->hif_drv;
+	struct wilc *wl = vif->wilc;
 
 	netdev_dbg(ndev, "Mac close\n");
-
-	if (!wl)
-		return 0;
-
-	if (!hif_drv)
-		return 0;
 
 	if (wl->open_ifcs > 0)
 		wl->open_ifcs--;
