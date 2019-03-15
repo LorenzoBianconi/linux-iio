@@ -77,7 +77,7 @@ static irqreturn_t ad7766_trigger_handler(int irq, void *p)
 		goto done;
 
 	iio_push_to_buffers_with_timestamp(indio_dev, ad7766->data,
-		pf->timestamp);
+					   pf->timestamp);
 done:
 	iio_trigger_notify_done(indio_dev->trig);
 
@@ -127,7 +127,8 @@ static int ad7766_postdisable(struct iio_dev *indio_dev)
 }
 
 static int ad7766_read_raw(struct iio_dev *indio_dev,
-	const struct iio_chan_spec *chan, int *val, int *val2, long info)
+			   const struct iio_chan_spec *chan, int *val,
+			   int *val2, long info)
 {
 	struct ad7766 *ad7766 = iio_priv(indio_dev);
 	struct regulator *vref = ad7766->reg[AD7766_SUPPLY_VREF].consumer;
@@ -234,12 +235,12 @@ static int ad7766_probe(struct spi_device *spi)
 	ad7766->reg[AD7766_SUPPLY_VREF].supply = "vref";
 
 	ret = devm_regulator_bulk_get(&spi->dev, ARRAY_SIZE(ad7766->reg),
-		ad7766->reg);
+				      ad7766->reg);
 	if (ret)
 		return ret;
 
 	ad7766->pd_gpio = devm_gpiod_get_optional(&spi->dev, "powerdown",
-		GPIOD_OUT_HIGH);
+						  GPIOD_OUT_HIGH);
 	if (IS_ERR(ad7766->pd_gpio))
 		return PTR_ERR(ad7766->pd_gpio);
 
@@ -252,7 +253,8 @@ static int ad7766_probe(struct spi_device *spi)
 
 	if (spi->irq > 0) {
 		ad7766->trig = devm_iio_trigger_alloc(&spi->dev, "%s-dev%d",
-			indio_dev->name, indio_dev->id);
+						      indio_dev->name,
+						      indio_dev->id);
 		if (!ad7766->trig)
 			return -ENOMEM;
 
@@ -261,8 +263,9 @@ static int ad7766_probe(struct spi_device *spi)
 		iio_trigger_set_drvdata(ad7766->trig, ad7766);
 
 		ret = devm_request_irq(&spi->dev, spi->irq, ad7766_irq,
-			IRQF_TRIGGER_FALLING, dev_name(&spi->dev),
-			ad7766->trig);
+				       IRQF_TRIGGER_FALLING,
+				       dev_name(&spi->dev),
+				       ad7766->trig);
 		if (ret < 0)
 			return ret;
 
@@ -290,8 +293,9 @@ static int ad7766_probe(struct spi_device *spi)
 	spi_message_add_tail(&ad7766->xfer, &ad7766->msg);
 
 	ret = devm_iio_triggered_buffer_setup(&spi->dev, indio_dev,
-		&iio_pollfunc_store_time, &ad7766_trigger_handler,
-		&ad7766_buffer_setup_ops);
+					      &iio_pollfunc_store_time,
+					      &ad7766_trigger_handler,
+					      &ad7766_buffer_setup_ops);
 	if (ret)
 		return ret;
 

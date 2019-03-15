@@ -38,6 +38,29 @@ static const int gyro_scale_6050[] = {133090, 266181, 532362, 1064724};
  */
 static const int accel_scale[] = {598, 1196, 2392, 4785};
 
+static const struct inv_mpu6050_reg_map reg_set_icm20602 = {
+	.sample_rate_div	= INV_MPU6050_REG_SAMPLE_RATE_DIV,
+	.lpf                    = INV_MPU6050_REG_CONFIG,
+	.accel_lpf              = INV_MPU6500_REG_ACCEL_CONFIG_2,
+	.user_ctrl              = INV_MPU6050_REG_USER_CTRL,
+	.fifo_en                = INV_MPU6050_REG_FIFO_EN,
+	.gyro_config            = INV_MPU6050_REG_GYRO_CONFIG,
+	.accl_config            = INV_MPU6050_REG_ACCEL_CONFIG,
+	.fifo_count_h           = INV_MPU6050_REG_FIFO_COUNT_H,
+	.fifo_r_w               = INV_MPU6050_REG_FIFO_R_W,
+	.raw_gyro               = INV_MPU6050_REG_RAW_GYRO,
+	.raw_accl               = INV_MPU6050_REG_RAW_ACCEL,
+	.temperature            = INV_MPU6050_REG_TEMPERATURE,
+	.int_enable             = INV_MPU6050_REG_INT_ENABLE,
+	.int_status             = INV_MPU6050_REG_INT_STATUS,
+	.pwr_mgmt_1             = INV_MPU6050_REG_PWR_MGMT_1,
+	.pwr_mgmt_2             = INV_MPU6050_REG_PWR_MGMT_2,
+	.int_pin_cfg            = INV_MPU6050_REG_INT_PIN_CFG,
+	.accl_offset            = INV_MPU6500_REG_ACCEL_OFFSET,
+	.gyro_offset            = INV_MPU6050_REG_GYRO_OFFSET,
+	.i2c_if                 = INV_ICM20602_REG_I2C_IF,
+};
+
 static const struct inv_mpu6050_reg_map reg_set_6500 = {
 	.sample_rate_div	= INV_MPU6050_REG_SAMPLE_RATE_DIV,
 	.lpf                    = INV_MPU6050_REG_CONFIG,
@@ -58,6 +81,7 @@ static const struct inv_mpu6050_reg_map reg_set_6500 = {
 	.int_pin_cfg		= INV_MPU6050_REG_INT_PIN_CFG,
 	.accl_offset		= INV_MPU6500_REG_ACCEL_OFFSET,
 	.gyro_offset		= INV_MPU6050_REG_GYRO_OFFSET,
+	.i2c_if                 = 0,
 };
 
 static const struct inv_mpu6050_reg_map reg_set_6050 = {
@@ -78,6 +102,7 @@ static const struct inv_mpu6050_reg_map reg_set_6050 = {
 	.int_pin_cfg		= INV_MPU6050_REG_INT_PIN_CFG,
 	.accl_offset		= INV_MPU6050_REG_ACCEL_OFFSET,
 	.gyro_offset		= INV_MPU6050_REG_GYRO_OFFSET,
+	.i2c_if                 = 0,
 };
 
 static const struct inv_mpu6050_chip_config chip_config_6050 = {
@@ -138,6 +163,12 @@ static const struct inv_mpu6050_hw hw_info[] = {
 		.whoami = INV_ICM20608_WHOAMI_VALUE,
 		.name = "ICM20608",
 		.reg = &reg_set_6500,
+		.config = &chip_config_6050,
+	},
+	{
+		.whoami = INV_ICM20602_WHOAMI_VALUE,
+		.name = "ICM20602",
+		.reg = &reg_set_icm20602,
 		.config = &chip_config_6050,
 	},
 };
@@ -765,12 +796,14 @@ static const struct iio_mount_matrix *
 inv_get_mount_matrix(const struct iio_dev *indio_dev,
 		     const struct iio_chan_spec *chan)
 {
-	return &((struct inv_mpu6050_state *)iio_priv(indio_dev))->orientation;
+	struct inv_mpu6050_state *data = iio_priv(indio_dev);
+
+	return &data->orientation;
 }
 
 static const struct iio_chan_spec_ext_info inv_ext_info[] = {
 	IIO_MOUNT_MATRIX(IIO_SHARED_BY_TYPE, inv_get_mount_matrix),
-	{ },
+	{ }
 };
 
 #define INV_MPU6050_CHAN(_type, _channel2, _index)                    \
@@ -990,8 +1023,8 @@ int inv_mpu_core_probe(struct regmap *regmap, int irq, const char *name,
 
 	pdata = dev_get_platdata(dev);
 	if (!pdata) {
-		result = of_iio_read_mount_matrix(dev, "mount-matrix",
-						  &st->orientation);
+		result = iio_read_mount_matrix(dev, "mount-matrix",
+					       &st->orientation);
 		if (result) {
 			dev_err(dev, "Failed to retrieve mounting matrix %d\n",
 				result);
