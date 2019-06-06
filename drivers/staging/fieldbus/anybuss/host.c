@@ -1173,7 +1173,7 @@ static int anybus_bus_match(struct device *dev,
 	struct anybuss_client *adev =
 		to_anybuss_client(dev);
 
-	return adrv->fieldbus_type == adev->fieldbus_type;
+	return adrv->anybus_id == be16_to_cpu(adev->anybus_id);
 }
 
 static int anybus_bus_probe(struct device *dev)
@@ -1264,7 +1264,7 @@ anybuss_host_common_probe(struct device *dev,
 {
 	int ret, i;
 	u8 val[4];
-	u16 fieldbus_type;
+	__be16 fieldbus_type;
 	struct anybuss_host *cd;
 
 	cd = devm_kzalloc(dev, sizeof(*cd), GFP_KERNEL);
@@ -1325,11 +1325,10 @@ anybuss_host_common_probe(struct device *dev,
 	 *   interrupt came in: ready to go !
 	 */
 	reset_deassert(cd);
-	ret = wait_for_completion_timeout(&cd->card_boot, TIMEOUT);
-	if (ret == 0)
+	if (!wait_for_completion_timeout(&cd->card_boot, TIMEOUT)) {
 		ret = -ETIMEDOUT;
-	if (ret < 0)
 		goto err_reset;
+	}
 	/*
 	 * according to the anybus docs, we're allowed to read these
 	 * without handshaking / reserving the area
@@ -1348,8 +1347,7 @@ anybuss_host_common_probe(struct device *dev,
 	add_device_randomness(&val, 4);
 	regmap_bulk_read(cd->regmap, REG_FIELDBUS_TYPE, &fieldbus_type,
 			 sizeof(fieldbus_type));
-	fieldbus_type = be16_to_cpu(fieldbus_type);
-	dev_info(dev, "Fieldbus type: %04X", fieldbus_type);
+	dev_info(dev, "Fieldbus type: %04X", be16_to_cpu(fieldbus_type));
 	regmap_bulk_read(cd->regmap, REG_MODULE_SW_V, val, 2);
 	dev_info(dev, "Module SW version: %02X%02X",
 		 val[0], val[1]);
@@ -1373,7 +1371,7 @@ anybuss_host_common_probe(struct device *dev,
 		ret = -ENOMEM;
 		goto err_kthread;
 	}
-	cd->client->fieldbus_type = fieldbus_type;
+	cd->client->anybus_id = fieldbus_type;
 	cd->client->host = cd;
 	cd->client->dev.bus = &anybus_bus;
 	cd->client->dev.parent = dev;
