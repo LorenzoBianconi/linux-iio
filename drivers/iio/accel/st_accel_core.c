@@ -1,11 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * STMicroelectronics accelerometers driver
  *
  * Copyright 2012-2013 STMicroelectronics Inc.
  *
  * Denis Ciocca <denis.ciocca@st.com>
- *
- * Licensed under the GPL-2.
  */
 
 #include <linux/kernel.h>
@@ -14,7 +13,6 @@
 #include <linux/acpi.h>
 #include <linux/errno.h>
 #include <linux/types.h>
-#include <linux/mutex.h>
 #include <linux/interrupt.h>
 #include <linux/i2c.h>
 #include <linux/gpio.h>
@@ -1148,6 +1146,24 @@ out:
 #endif
 }
 
+/*
+ * st_accel_get_settings() - get sensor settings from device name
+ * @name: device name buffer reference.
+ *
+ * Return: valid reference on success, NULL otherwise.
+ */
+const struct st_sensor_settings *st_accel_get_settings(const char *name)
+{
+	int index = st_sensors_get_settings_index(name,
+					st_accel_sensors_settings,
+					ARRAY_SIZE(st_accel_sensors_settings));
+	if (index < 0)
+		return NULL;
+
+	return &st_accel_sensors_settings[index];
+}
+EXPORT_SYMBOL(st_accel_get_settings);
+
 int st_accel_common_probe(struct iio_dev *indio_dev)
 {
 	struct st_sensor_data *adata = iio_priv(indio_dev);
@@ -1160,20 +1176,16 @@ int st_accel_common_probe(struct iio_dev *indio_dev)
 
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->info = &accel_info;
-	mutex_init(&adata->tb.buf_lock);
 
 	err = st_sensors_power_enable(indio_dev);
 	if (err)
 		return err;
 
-	err = st_sensors_check_device_support(indio_dev,
-					ARRAY_SIZE(st_accel_sensors_settings),
-					st_accel_sensors_settings);
+	err = st_sensors_verify_id(indio_dev);
 	if (err < 0)
 		goto st_accel_power_off;
 
 	adata->num_data_channels = ST_ACCEL_NUMBER_DATA_CHANNELS;
-	adata->multiread_bit = adata->sensor_settings->multi_read_bit;
 	indio_dev->num_channels = ST_SENSORS_NUMBER_ALL_CHANNELS;
 
 	channels_size = indio_dev->num_channels * sizeof(struct iio_chan_spec);

@@ -238,7 +238,7 @@ int  kp2000_check_uio_irq(struct kp2000_device *pcard, u32 irq_num)
 {
 	u64 interrupt_active   =  readq(pcard->sysinfo_regs_base + REG_INTERRUPT_ACTIVE);
 	u64 interrupt_mask_inv = ~readq(pcard->sysinfo_regs_base + REG_INTERRUPT_MASK);
-	u64 irq_check_mask = (1 << irq_num);
+	u64 irq_check_mask = BIT_ULL(irq_num);
 
 	if (interrupt_active & irq_check_mask) { // if it's active (interrupt pending)
 		if (interrupt_mask_inv & irq_check_mask) {    // and if it's not masked off
@@ -257,7 +257,9 @@ irqreturn_t  kuio_handler(int irq, struct uio_info *uioinfo)
 		return IRQ_NONE;
 
 	if (kp2000_check_uio_irq(kudev->pcard, kudev->cte.irq_base_num)) {
-		writeq((1 << kudev->cte.irq_base_num), kudev->pcard->sysinfo_regs_base + REG_INTERRUPT_ACTIVE); // Clear the active flag
+		/* Clear the active flag */
+		writeq(BIT_ULL(kudev->cte.irq_base_num),
+		       kudev->pcard->sysinfo_regs_base + REG_INTERRUPT_ACTIVE);
 		return IRQ_HANDLED;
 	}
 	return IRQ_NONE;
@@ -273,9 +275,9 @@ int kuio_irqcontrol(struct uio_info *uioinfo, s32 irq_on)
 	mutex_lock(&pcard->sem);
 	mask = readq(pcard->sysinfo_regs_base + REG_INTERRUPT_MASK);
 	if (irq_on)
-		mask &= ~(1 << (kudev->cte.irq_base_num));
+		mask &= ~(BIT_ULL(kudev->cte.irq_base_num));
 	else
-		mask |= (1 << (kudev->cte.irq_base_num));
+		mask |= BIT_ULL(kudev->cte.irq_base_num);
 	writeq(mask, pcard->sysinfo_regs_base + REG_INTERRUPT_MASK);
 	mutex_unlock(&pcard->sem);
 
@@ -344,8 +346,6 @@ static int  create_dma_engine_core(struct kp2000_device *pcard, size_t engine_re
 	struct mfd_cell  cell = { .id = engine_num };
 	struct resource  resources[2];
 
-	dev_dbg(&pcard->pdev->dev, "create_dma_core(pcard = [%p], engine_regs_offset = %zx, engine_num = %d)\n", pcard, engine_regs_offset, engine_num);
-
 	cell.platform_data = NULL;
 	cell.pdata_size = 0;
 	cell.name = KP_DRIVER_NAME_DMA_CONTROLLER;
@@ -413,9 +413,6 @@ int  kp2000_probe_cores(struct kp2000_device *pcard)
 	u64 read_val;
 	unsigned int highest_core_id = 0;
 	struct core_table_entry cte;
-
-	dev_dbg(&pcard->pdev->dev, "%s(pcard = %p / %d)\n", __func__, pcard,
-		pcard->card_num);
 
 	err = kp2000_setup_dma_controller(pcard);
 	if (err)

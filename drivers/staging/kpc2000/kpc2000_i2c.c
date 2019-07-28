@@ -25,20 +25,16 @@
 #include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <linux/fs.h>
-#include <linux/rwsem.h>
 #include <linux/delay.h>
 #include <linux/i2c.h>
 #include "kpc.h"
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Matt.Sickler@Daktronics.com");
-MODULE_SOFTDEP("pre: i2c-dev");
 
 struct i2c_device {
 	unsigned long           smba;
 	struct i2c_adapter      adapter;
-	struct platform_device *pldev;
-	struct rw_semaphore     rw_sem;
 	unsigned int            features;
 };
 
@@ -118,19 +114,18 @@ struct i2c_device {
 #define PCI_DEVICE_ID_INTEL_LYNXPOINT_SMBUS         0x8c22
 #define PCI_DEVICE_ID_INTEL_LYNXPOINT_LP_SMBUS      0x9c22
 
-
-#define FEATURE_SMBUS_PEC       (1 << 0)
-#define FEATURE_BLOCK_BUFFER    (1 << 1)
-#define FEATURE_BLOCK_PROC      (1 << 2)
-#define FEATURE_I2C_BLOCK_READ  (1 << 3)
+#define FEATURE_SMBUS_PEC       BIT(0)
+#define FEATURE_BLOCK_BUFFER    BIT(1)
+#define FEATURE_BLOCK_PROC      BIT(2)
+#define FEATURE_I2C_BLOCK_READ  BIT(3)
 /* Not really a feature, but it's convenient to handle it as such */
-#define FEATURE_IDF             (1 << 15)
+#define FEATURE_IDF             BIT(15)
 
 // FIXME!
 #undef inb_p
-#define inb_p(a) readq((void*)a)
+#define inb_p(a) readq((void *)a)
 #undef outb_p
-#define outb_p(d,a) writeq(d,(void*)a)
+#define outb_p(d, a) writeq(d, (void *)a)
 
 /* Make sure the SMBus host is ready to start transmitting.
  * Return 0 if it is, -EBUSY if it is not.
@@ -261,7 +256,7 @@ static int i801_block_transaction_by_block(struct i2c_device *priv, union i2c_sm
 		len = data->block[0];
 		outb_p(len, SMBHSTDAT0(priv));
 		for (i = 0; i < len; i++)
-			outb_p(data->block[i+1], SMBBLKDAT(priv));
+			outb_p(data->block[i + 1], SMBBLKDAT(priv));
 	}
 
 	status = i801_transaction(priv, I801_BLOCK_DATA | ENABLE_INT9 | I801_PEC_EN * hwpec);
@@ -341,8 +336,8 @@ static int i801_block_transaction_byte_by_byte(struct i2c_device *priv, union i2
 		/* Retrieve/store value in SMBBLKDAT */
 		if (read_write == I2C_SMBUS_READ)
 			data->block[i] = inb_p(SMBBLKDAT(priv));
-		if (read_write == I2C_SMBUS_WRITE && i+1 <= len)
-			outb_p(data->block[i+1], SMBBLKDAT(priv));
+		if (read_write == I2C_SMBUS_WRITE && i + 1 <= len)
+			outb_p(data->block[i + 1], SMBBLKDAT(priv));
 		/* signals SMBBLKDAT ready */
 		outb_p(SMBHSTSTS_BYTE_DONE | SMBHSTSTS_INTR, SMBHSTSTS(priv));
 	}
@@ -524,8 +519,6 @@ static s32 i801_access(struct i2c_adapter *adap, u16 addr, unsigned short flags,
 	return 0;
 }
 
-
-
 static u32 i801_func(struct i2c_adapter *adapter)
 {
 	struct i2c_device *priv = i2c_get_adapdata(adapter);
@@ -574,8 +567,6 @@ static const struct i2c_algorithm smbus_algorithm = {
 	.functionality  = i801_func,
 };
 
-
-
 /********************************
  *** Part 2 - Driver Handlers ***
  ********************************/
@@ -595,10 +586,16 @@ static int pi2c_probe(struct platform_device *pldev)
 	priv->adapter.algo = &smbus_algorithm;
 
 	res = platform_get_resource(pldev, IORESOURCE_MEM, 0);
-	priv->smba = (unsigned long)ioremap_nocache(res->start, resource_size(res));
+	if (!res)
+		return -ENXIO;
 
-	priv->pldev = pldev;
-	pldev->dev.platform_data = priv;
+	priv->smba = (unsigned long)devm_ioremap_nocache(&pldev->dev,
+							 res->start,
+							 resource_size(res));
+	if (!priv->smba)
+		return -ENOMEM;
+
+	platform_set_drvdata(pldev, priv);
 
 	priv->features |= FEATURE_IDF;
 	priv->features |= FEATURE_I2C_BLOCK_READ;
@@ -606,7 +603,6 @@ static int pi2c_probe(struct platform_device *pldev)
 	priv->features |= FEATURE_BLOCK_BUFFER;
 
 	//init_MUTEX(&lddata->sem);
-	init_rwsem(&priv->rw_sem);
 
 	/* set up the sysfs linkage to our parent device */
 	priv->adapter.dev.parent = &pldev->dev;
@@ -630,7 +626,7 @@ static int pi2c_remove(struct platform_device *pldev)
 {
 	struct i2c_device *lddev;
 
-	lddev = (struct i2c_device *)pldev->dev.platform_data;
+	lddev = (struct i2c_device *)platform_get_drvdata(pldev);
 
 	i2c_del_adapter(&lddev->adapter);
 
