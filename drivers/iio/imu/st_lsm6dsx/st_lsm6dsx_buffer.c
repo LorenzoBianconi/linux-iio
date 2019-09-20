@@ -588,6 +588,9 @@ int st_lsm6dsx_flush_fifo(struct st_lsm6dsx_hw *hw)
 {
 	int err;
 
+	if (!hw->settings->fifo_ops.read_fifo)
+		return -ENOTSUPP;
+
 	mutex_lock(&hw->fifo_lock);
 
 	hw->settings->fifo_ops.read_fifo(hw);
@@ -661,6 +664,9 @@ static irqreturn_t st_lsm6dsx_handler_thread(int irq, void *private)
 {
 	struct st_lsm6dsx_hw *hw = private;
 	int count;
+
+	if (!hw->settings->fifo_ops.read_fifo)
+		return IRQ_NONE;
 
 	mutex_lock(&hw->fifo_lock);
 	count = hw->settings->fifo_ops.read_fifo(hw);
