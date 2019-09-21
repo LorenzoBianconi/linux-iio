@@ -235,6 +235,8 @@ struct st_lsm6dsx_settings {
 		struct st_lsm6dsx_reg irq2;
 		struct st_lsm6dsx_reg lir;
 		struct st_lsm6dsx_reg clear_on_read;
+		struct st_lsm6dsx_reg hla;
+		struct st_lsm6dsx_reg od;
 	} irq_config;
 	struct st_lsm6dsx_odr_table_entry odr_table[2];
 	struct st_lsm6dsx_fs_table_entry fs_table[2];

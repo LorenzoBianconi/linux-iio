@@ -245,6 +245,14 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.addr = 0x58,
 				.mask = BIT(0),
 			},
+			.hla = {
+				.addr = 0x12,
+				.mask = BIT(5),
+			},
+			.od = {
+				.addr = 0x12,
+				.mask = BIT(4),
+			},
 		},
 		.decimator = {
 			[ST_LSM6DSX_ID_ACC] = {
@@ -368,6 +376,14 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 			.lir = {
 				.addr = 0x58,
 				.mask = BIT(0),
+			},
+			.hla = {
+				.addr = 0x12,
+				.mask = BIT(5),
+			},
+			.od = {
+				.addr = 0x12,
+				.mask = BIT(4),
 			},
 		},
 		.decimator = {
@@ -502,6 +518,14 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.addr = 0x58,
 				.mask = BIT(0),
 			},
+			.hla = {
+				.addr = 0x12,
+				.mask = BIT(5),
+			},
+			.od = {
+				.addr = 0x12,
+				.mask = BIT(4),
+			},
 		},
 		.decimator = {
 			[ST_LSM6DSX_ID_ACC] = {
@@ -632,6 +656,14 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 			.clear_on_read = {
 				.addr = 0x56,
 				.mask = BIT(6),
+			},
+			.hla = {
+				.addr = 0x12,
+				.mask = BIT(5),
+			},
+			.od = {
+				.addr = 0x12,
+				.mask = BIT(4),
 			},
 		},
 		.batch = {
@@ -779,6 +811,14 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.addr = 0x56,
 				.mask = BIT(6),
 			},
+			.hla = {
+				.addr = 0x12,
+				.mask = BIT(5),
+			},
+			.od = {
+				.addr = 0x12,
+				.mask = BIT(4),
+			},
 		},
 		.batch = {
 			[ST_LSM6DSX_ID_ACC] = {
@@ -901,6 +941,14 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 			.clear_on_read = {
 				.addr = 0x56,
 				.mask = BIT(6),
+			},
+			.hla = {
+				.addr = 0x12,
+				.mask = BIT(5),
+			},
+			.od = {
+				.addr = 0x12,
+				.mask = BIT(4),
 			},
 		},
 		.batch = {
