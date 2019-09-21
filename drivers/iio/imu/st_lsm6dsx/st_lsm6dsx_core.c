@@ -58,7 +58,6 @@
 
 #include "st_lsm6dsx.h"
 
-#define ST_LSM6DSX_REG_FIFO_FTH_IRQ_MASK	BIT(3)
 #define ST_LSM6DSX_REG_WHOAMI_ADDR		0x0f
 #define ST_LSM6DSX_REG_RESET_MASK		BIT(0)
 #define ST_LSM6DSX_REG_BOOT_MASK		BIT(7)
@@ -89,8 +88,6 @@ static const struct iio_chan_spec st_lsm6ds0_gyro_channels[] = {
 static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 	{
 		.wai = 0x68,
-		.int1_addr = 0x0c,
-		.int2_addr = 0x0d,
 		.reset_addr = 0x22,
 		.max_fifo_size = 32,
 		.id = {
@@ -156,11 +153,19 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.fs_avl[2] = { IIO_DEGREE_TO_RAD(2000), 0x3 },
 			},
 		},
+		.irq_config = {
+			.irq1 = {
+				.addr = 0x0c,
+				.mask = BIT(3),
+			},
+			.irq2 = {
+				.addr = 0x0d,
+				.mask = BIT(3),
+			},
+		},
 	},
 	{
 		.wai = 0x69,
-		.int1_addr = 0x0d,
-		.int2_addr = 0x0e,
 		.reset_addr = 0x12,
 		.max_fifo_size = 1365,
 		.id = {
@@ -227,6 +232,20 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.fs_avl[3] = { IIO_DEGREE_TO_RAD(70000), 0x3 },
 			},
 		},
+		.irq_config = {
+			.irq1 = {
+				.addr = 0x0d,
+				.mask = BIT(3),
+			},
+			.irq2 = {
+				.addr = 0x0e,
+				.mask = BIT(3),
+			},
+			.lir = {
+				.addr = 0x58,
+				.mask = BIT(0),
+			},
+		},
 		.decimator = {
 			[ST_LSM6DSX_ID_ACC] = {
 				.addr = 0x08,
@@ -236,10 +255,6 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.addr = 0x08,
 				.mask = GENMASK(5, 3),
 			},
-		},
-		.lir = {
-			.addr = 0x58,
-			.mask = BIT(0),
 		},
 		.fifo_ops = {
 			.update_fifo = st_lsm6dsx_update_fifo,
@@ -275,8 +290,6 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 	},
 	{
 		.wai = 0x69,
-		.int1_addr = 0x0d,
-		.int2_addr = 0x0e,
 		.reset_addr = 0x12,
 		.max_fifo_size = 682,
 		.id = {
@@ -343,6 +356,20 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.fs_avl[3] = { IIO_DEGREE_TO_RAD(70000), 0x3 },
 			},
 		},
+		.irq_config = {
+			.irq1 = {
+				.addr = 0x0d,
+				.mask = BIT(3),
+			},
+			.irq2 = {
+				.addr = 0x0e,
+				.mask = BIT(3),
+			},
+			.lir = {
+				.addr = 0x58,
+				.mask = BIT(0),
+			},
+		},
 		.decimator = {
 			[ST_LSM6DSX_ID_ACC] = {
 				.addr = 0x08,
@@ -352,10 +379,6 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.addr = 0x08,
 				.mask = GENMASK(5, 3),
 			},
-		},
-		.lir = {
-			.addr = 0x58,
-			.mask = BIT(0),
 		},
 		.fifo_ops = {
 			.update_fifo = st_lsm6dsx_update_fifo,
@@ -391,8 +414,6 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 	},
 	{
 		.wai = 0x6a,
-		.int1_addr = 0x0d,
-		.int2_addr = 0x0e,
 		.reset_addr = 0x12,
 		.max_fifo_size = 682,
 		.id = {
@@ -468,6 +489,20 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.fs_avl[3] = { IIO_DEGREE_TO_RAD(70000), 0x3 },
 			},
 		},
+		.irq_config = {
+			.irq1 = {
+				.addr = 0x0d,
+				.mask = BIT(3),
+			},
+			.irq2 = {
+				.addr = 0x0e,
+				.mask = BIT(3),
+			},
+			.lir = {
+				.addr = 0x58,
+				.mask = BIT(0),
+			},
+		},
 		.decimator = {
 			[ST_LSM6DSX_ID_ACC] = {
 				.addr = 0x08,
@@ -477,10 +512,6 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.addr = 0x08,
 				.mask = GENMASK(5, 3),
 			},
-		},
-		.lir = {
-			.addr = 0x58,
-			.mask = BIT(0),
 		},
 		.fifo_ops = {
 			.update_fifo = st_lsm6dsx_update_fifo,
@@ -516,8 +547,6 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 	},
 	{
 		.wai = 0x6c,
-		.int1_addr = 0x0d,
-		.int2_addr = 0x0e,
 		.reset_addr = 0x12,
 		.max_fifo_size = 512,
 		.id = {
@@ -587,6 +616,24 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.fs_avl[3] = { IIO_DEGREE_TO_RAD(70000), 0x3 },
 			},
 		},
+		.irq_config = {
+			.irq1 = {
+				.addr = 0x0d,
+				.mask = BIT(3),
+			},
+			.irq2 = {
+				.addr = 0x0e,
+				.mask = BIT(3),
+			},
+			.lir = {
+				.addr = 0x56,
+				.mask = BIT(0),
+			},
+			.clear_on_read = {
+				.addr = 0x56,
+				.mask = BIT(6),
+			},
+		},
 		.batch = {
 			[ST_LSM6DSX_ID_ACC] = {
 				.addr = 0x09,
@@ -596,14 +643,6 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.addr = 0x09,
 				.mask = GENMASK(7, 4),
 			},
-		},
-		.lir = {
-			.addr = 0x56,
-			.mask = BIT(0),
-		},
-		.clear_on_read = {
-			.addr = 0x56,
-			.mask = BIT(6),
 		},
 		.fifo_ops = {
 			.update_fifo = st_lsm6dsx_update_fifo,
@@ -657,8 +696,6 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 	},
 	{
 		.wai = 0x6b,
-		.int1_addr = 0x0d,
-		.int2_addr = 0x0e,
 		.reset_addr = 0x12,
 		.max_fifo_size = 512,
 		.id = {
@@ -725,6 +762,24 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.fs_avl[3] = { IIO_DEGREE_TO_RAD(70000), 0x3 },
 			},
 		},
+		.irq_config = {
+			.irq1 = {
+				.addr = 0x0d,
+				.mask = BIT(3),
+			},
+			.irq2 = {
+				.addr = 0x0e,
+				.mask = BIT(3),
+			},
+			.lir = {
+				.addr = 0x56,
+				.mask = BIT(0),
+			},
+			.clear_on_read = {
+				.addr = 0x56,
+				.mask = BIT(6),
+			},
+		},
 		.batch = {
 			[ST_LSM6DSX_ID_ACC] = {
 				.addr = 0x09,
@@ -734,14 +789,6 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.addr = 0x09,
 				.mask = GENMASK(7, 4),
 			},
-		},
-		.lir = {
-			.addr = 0x56,
-			.mask = BIT(0),
-		},
-		.clear_on_read = {
-			.addr = 0x56,
-			.mask = BIT(6),
 		},
 		.fifo_ops = {
 			.update_fifo = st_lsm6dsx_update_fifo,
@@ -769,8 +816,6 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 	},
 	{
 		.wai = 0x6b,
-		.int1_addr = 0x0d,
-		.int2_addr = 0x0e,
 		.reset_addr = 0x12,
 		.max_fifo_size = 512,
 		.id = {
@@ -840,6 +885,24 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.fs_avl[3] = { IIO_DEGREE_TO_RAD(70000), 0x3 },
 			},
 		},
+		.irq_config = {
+			.irq1 = {
+				.addr = 0x0d,
+				.mask = BIT(3),
+			},
+			.irq2 = {
+				.addr = 0x0e,
+				.mask = BIT(3),
+			},
+			.lir = {
+				.addr = 0x56,
+				.mask = BIT(0),
+			},
+			.clear_on_read = {
+				.addr = 0x56,
+				.mask = BIT(6),
+			},
+		},
 		.batch = {
 			[ST_LSM6DSX_ID_ACC] = {
 				.addr = 0x09,
@@ -849,14 +912,6 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.addr = 0x09,
 				.mask = GENMASK(7, 4),
 			},
-		},
-		.lir = {
-			.addr = 0x56,
-			.mask = BIT(0),
-		},
-		.clear_on_read = {
-			.addr = 0x56,
-			.mask = BIT(6),
 		},
 		.fifo_ops = {
 			.update_fifo = st_lsm6dsx_update_fifo,
@@ -1299,7 +1354,9 @@ static int st_lsm6dsx_of_get_drdy_pin(struct st_lsm6dsx_hw *hw, int *drdy_pin)
 	return of_property_read_u32(np, "st,drdy-int-pin", drdy_pin);
 }
 
-static int st_lsm6dsx_get_drdy_reg(struct st_lsm6dsx_hw *hw, u8 *drdy_reg)
+static int
+st_lsm6dsx_get_drdy_reg(struct st_lsm6dsx_hw *hw,
+			const struct st_lsm6dsx_reg **drdy_reg)
 {
 	int err = 0, drdy_pin;
 
@@ -1313,10 +1370,10 @@ static int st_lsm6dsx_get_drdy_reg(struct st_lsm6dsx_hw *hw, u8 *drdy_reg)
 
 	switch (drdy_pin) {
 	case 1:
-		*drdy_reg = hw->settings->int1_addr;
+		*drdy_reg = &hw->settings->irq_config.irq1;
 		break;
 	case 2:
-		*drdy_reg = hw->settings->int2_addr;
+		*drdy_reg = &hw->settings->irq_config.irq2;
 		break;
 	default:
 		dev_err(hw->dev, "unsupported data ready pin\n");
@@ -1412,7 +1469,7 @@ static int st_lsm6dsx_init_hw_timer(struct st_lsm6dsx_hw *hw)
 
 static int st_lsm6dsx_init_device(struct st_lsm6dsx_hw *hw)
 {
-	u8 drdy_int_reg;
+	const struct st_lsm6dsx_reg *reg;
 	int err;
 
 	/* device sw reset */
@@ -1441,35 +1498,29 @@ static int st_lsm6dsx_init_device(struct st_lsm6dsx_hw *hw)
 		return err;
 
 	/* enable FIFO watermak interrupt */
-	err = st_lsm6dsx_get_drdy_reg(hw, &drdy_int_reg);
+	err = st_lsm6dsx_get_drdy_reg(hw, &reg);
 	if (err < 0)
 		return err;
 
-	err = regmap_update_bits(hw->regmap, drdy_int_reg,
-				 ST_LSM6DSX_REG_FIFO_FTH_IRQ_MASK,
-				 FIELD_PREP(ST_LSM6DSX_REG_FIFO_FTH_IRQ_MASK,
-					    1));
+	err = regmap_update_bits(hw->regmap, reg->addr, reg->mask,
+				 ST_LSM6DSX_SHIFT_VAL(1, reg->mask));
 	if (err < 0)
 		return err;
 
 	/* enable Latched interrupts for device events */
-	if (hw->settings->lir.addr) {
-		unsigned int data;
-
-		data = ST_LSM6DSX_SHIFT_VAL(1, hw->settings->lir.mask);
-		err = regmap_update_bits(hw->regmap, hw->settings->lir.addr,
-					 hw->settings->lir.mask, data);
+	if (hw->settings->irq_config.lir.addr) {
+		reg = &hw->settings->irq_config.lir;
+		err = regmap_update_bits(hw->regmap, reg->addr, reg->mask,
+					 ST_LSM6DSX_SHIFT_VAL(1, reg->mask));
 		if (err < 0)
 			return err;
 
 		/* enable clear on read for latched interrupts */
-		if (hw->settings->clear_on_read.addr) {
-			data = ST_LSM6DSX_SHIFT_VAL(1,
-					hw->settings->clear_on_read.mask);
+		if (hw->settings->irq_config.clear_on_read.addr) {
+			reg = &hw->settings->irq_config.clear_on_read;
 			err = regmap_update_bits(hw->regmap,
-					hw->settings->clear_on_read.addr,
-					hw->settings->clear_on_read.mask,
-					data);
+					reg->addr, reg->mask,
+					ST_LSM6DSX_SHIFT_VAL(1, reg->mask));
 			if (err < 0)
 				return err;
 		}
