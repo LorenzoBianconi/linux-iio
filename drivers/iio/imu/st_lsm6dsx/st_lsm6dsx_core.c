@@ -131,6 +131,7 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.odr_avl[3] = { 238, 0x04 },
 				.odr_avl[4] = { 476, 0x05 },
 				.odr_avl[5] = { 952, 0x06 },
+				.odr_len = 6,
 			},
 			[ST_LSM6DSX_ID_GYRO] = {
 				.reg = {
@@ -143,6 +144,7 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.odr_avl[3] = { 238, 0x04 },
 				.odr_avl[4] = { 476, 0x05 },
 				.odr_avl[5] = { 952, 0x06 },
+				.odr_len = 6,
 			},
 		},
 		.fs_table = {
@@ -230,6 +232,7 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.odr_avl[3] = { 104, 0x04 },
 				.odr_avl[4] = { 208, 0x05 },
 				.odr_avl[5] = { 416, 0x06 },
+				.odr_len = 6,
 			},
 			[ST_LSM6DSX_ID_GYRO] = {
 				.reg = {
@@ -242,6 +245,7 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.odr_avl[3] = { 104, 0x04 },
 				.odr_avl[4] = { 208, 0x05 },
 				.odr_avl[5] = { 416, 0x06 },
+				.odr_len = 6,
 			},
 		},
 		.fs_table = {
@@ -394,6 +398,7 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.odr_avl[3] = { 104, 0x04 },
 				.odr_avl[4] = { 208, 0x05 },
 				.odr_avl[5] = { 416, 0x06 },
+				.odr_len = 6,
 			},
 			[ST_LSM6DSX_ID_GYRO] = {
 				.reg = {
@@ -406,6 +411,7 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.odr_avl[3] = { 104, 0x04 },
 				.odr_avl[4] = { 208, 0x05 },
 				.odr_avl[5] = { 416, 0x06 },
+				.odr_len = 6,
 			},
 		},
 		.fs_table = {
@@ -567,6 +573,7 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.odr_avl[3] = { 104, 0x04 },
 				.odr_avl[4] = { 208, 0x05 },
 				.odr_avl[5] = { 416, 0x06 },
+				.odr_len = 6,
 			},
 			[ST_LSM6DSX_ID_GYRO] = {
 				.reg = {
@@ -579,6 +586,7 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.odr_avl[3] = { 104, 0x04 },
 				.odr_avl[4] = { 208, 0x05 },
 				.odr_avl[5] = { 416, 0x06 },
+				.odr_len = 6,
 			},
 		},
 		.fs_table = {
@@ -738,6 +746,7 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.odr_avl[3] = { 104, 0x04 },
 				.odr_avl[4] = { 208, 0x05 },
 				.odr_avl[5] = { 416, 0x06 },
+				.odr_len = 6,
 			},
 			[ST_LSM6DSX_ID_GYRO] = {
 				.reg = {
@@ -750,6 +759,7 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.odr_avl[3] = { 104, 0x04 },
 				.odr_avl[4] = { 208, 0x05 },
 				.odr_avl[5] = { 416, 0x06 },
+				.odr_len = 6,
 			},
 		},
 		.fs_table = {
@@ -928,6 +938,7 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.odr_avl[3] = { 104, 0x04 },
 				.odr_avl[4] = { 208, 0x05 },
 				.odr_avl[5] = { 416, 0x06 },
+				.odr_len = 6,
 			},
 			[ST_LSM6DSX_ID_GYRO] = {
 				.reg = {
@@ -940,6 +951,7 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.odr_avl[3] = { 104, 0x04 },
 				.odr_avl[4] = { 208, 0x05 },
 				.odr_avl[5] = { 416, 0x06 },
+				.odr_len = 6,
 			},
 		},
 		.fs_table = {
@@ -1095,6 +1107,7 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.odr_avl[3] = { 104, 0x04 },
 				.odr_avl[4] = { 208, 0x05 },
 				.odr_avl[5] = { 416, 0x06 },
+				.odr_len = 6,
 			},
 			[ST_LSM6DSX_ID_GYRO] = {
 				.reg = {
@@ -1107,6 +1120,7 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.odr_avl[3] = { 104, 0x04 },
 				.odr_avl[4] = { 208, 0x05 },
 				.odr_avl[5] = { 416, 0x06 },
+				.odr_len = 6,
 			},
 		},
 		.fs_table = {
@@ -1329,7 +1343,7 @@ int st_lsm6dsx_check_odr(struct st_lsm6dsx_sensor *sensor, u16 odr, u8 *val)
 	int i;
 
 	odr_table = &sensor->hw->settings->odr_table[sensor->id];
-	for (i = 0; i < ST_LSM6DSX_ODR_LIST_SIZE; i++)
+	for (i = 0; i < odr_table->odr_len; i++)
 		/*
 		 * ext devices can run at different odr respect to
 		 * accel sensor
@@ -1337,7 +1351,7 @@ int st_lsm6dsx_check_odr(struct st_lsm6dsx_sensor *sensor, u16 odr, u8 *val)
 		if (odr_table->odr_avl[i].hz >= odr)
 			break;
 
-	if (i == ST_LSM6DSX_ODR_LIST_SIZE)
+	if (i == odr_table->odr_len)
 		return -EINVAL;
 
 	*val = odr_table->odr_avl[i].val;
@@ -1688,13 +1702,13 @@ st_lsm6dsx_sysfs_sampling_frequency_avail(struct device *dev,
 					  char *buf)
 {
 	struct st_lsm6dsx_sensor *sensor = iio_priv(dev_get_drvdata(dev));
-	enum st_lsm6dsx_sensor_id id = sensor->id;
-	struct st_lsm6dsx_hw *hw = sensor->hw;
+	const struct st_lsm6dsx_odr_table_entry *odr_table;
 	int i, len = 0;
 
-	for (i = 0; i < ST_LSM6DSX_ODR_LIST_SIZE; i++)
+	odr_table = &sensor->hw->settings->odr_table[sensor->id];
+	for (i = 0; i < odr_table->odr_len; i++)
 		len += scnprintf(buf + len, PAGE_SIZE - len, "%d ",
-				 hw->settings->odr_table[id].odr_avl[i].hz);
+				 odr_table->odr_avl[i].hz);
 	buf[len - 1] = '\n';
 
 	return len;
