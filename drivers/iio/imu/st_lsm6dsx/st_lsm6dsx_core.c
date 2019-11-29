@@ -1586,12 +1586,13 @@ static int st_lsm6dsx_event_setup(struct st_lsm6dsx_hw *hw, int state)
 					     hw->irq_routing->mask, data);
 }
 
-static int st_lsm6dsx_read_event(struct iio_dev *iio_dev,
-				   const struct iio_chan_spec *chan,
-				   enum iio_event_type type,
-				   enum iio_event_direction dir,
-				   enum iio_event_info info,
-				   int *val, int *val2)
+static int
+st_lsm6dsx_read_event(struct iio_dev *iio_dev,
+		      const struct iio_chan_spec *chan,
+		      enum iio_event_type type,
+		      enum iio_event_direction dir,
+		      enum iio_event_info info,
+		      int *val, int *val2)
 {
 	struct st_lsm6dsx_sensor *sensor = iio_priv(iio_dev);
 	struct st_lsm6dsx_hw *hw = sensor->hw;
@@ -1599,8 +1600,8 @@ static int st_lsm6dsx_read_event(struct iio_dev *iio_dev,
 	if (type != IIO_EV_TYPE_THRESH)
 		return -EINVAL;
 
-	*val2 = 0;
 	*val = hw->event_threshold;
+	*val2 = 0;
 
 	return IIO_VAL_INT;
 }
