@@ -120,6 +120,7 @@ static int ping_read(struct ping_data *data)
 	data->irqnr = gpiod_to_irq(data->gpiod_ping);
 	if (data->irqnr < 0) {
 		dev_err(data->dev, "gpiod_to_irq: %d\n", data->irqnr);
+		mutex_unlock(&data->lock);
 		return data->irqnr;
 	}
 
@@ -128,6 +129,7 @@ static int ping_read(struct ping_data *data)
 							pdev->name, indio_dev);
 	if (ret < 0) {
 		dev_err(data->dev, "request_irq: %d\n", ret);
+		mutex_unlock(&data->lock);
 		return ret;
 	}
 
