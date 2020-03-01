@@ -751,6 +751,10 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 			.addr = 0x12,
 			.mask = BIT(7),
 		},
+		.i3c_disable = {
+			.addr = 0x18,
+			.mask = BIT(1),
+		},
 		.bdu = {
 			.addr = 0x12,
 			.mask = BIT(6),
@@ -1127,6 +1131,10 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 		.boot = {
 			.addr = 0x12,
 			.mask = BIT(7),
+		},
+		.i3c_disable = {
+			.addr = 0x18,
+			.mask = BIT(1),
 		},
 		.bdu = {
 			.addr = 0x12,
@@ -2041,6 +2049,20 @@ static int st_lsm6dsx_init_device(struct st_lsm6dsx_hw *hw)
 	const struct st_lsm6dsx_reg *reg;
 	int err;
 
+	/*
+	 * disable MIPI I3C during device reset in order to avoid
+	 * possible races on interrupt line 1. If the first interrupt
+	 * line is asserted during hw reset the device will work in
+	 * I3C-only mode
+	 */
+	if (hw->settings->i3c_disable.addr) {
+		reg = &hw->settings->i3c_disable;
+		err = regmap_update_bits(hw->regmap, reg->addr, reg->mask,
+					 ST_LSM6DSX_SHIFT_VAL(1, reg->mask));
+		if (err < 0)
+			return err;
+	}
+
 	/* device sw reset */
 	reg = &hw->settings->reset;
 	err = regmap_update_bits(hw->regmap, reg->addr, reg->mask,
@@ -2058,6 +2080,15 @@ static int st_lsm6dsx_init_device(struct st_lsm6dsx_hw *hw)
 		return err;
 
 	msleep(50);
+
+	/* enable MIPI I3C */
+	if (hw->settings->i3c_disable.addr) {
+		reg = &hw->settings->i3c_disable;
+		err = regmap_update_bits(hw->regmap, reg->addr, reg->mask,
+					 ST_LSM6DSX_SHIFT_VAL(0, reg->mask));
+		if (err < 0)
+			return err;
+	}
 
 	/* enable Block Data Update */
 	reg = &hw->settings->bdu;

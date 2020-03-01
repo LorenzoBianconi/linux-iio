@@ -266,6 +266,7 @@ struct st_lsm6dsx_ext_dev_settings {
  * @wai: Sensor WhoAmI default value.
  * @reset: register address for reset.
  * @boot: register address for boot.
+ * @i3c_disable:  register address for enabling/disabling I3C (addr + mask).
  * @bdu: register address for Block Data Update.
  * @max_fifo_size: Sensor max fifo length in FIFO words.
  * @id: List of hw id/device name supported by the driver configuration.
@@ -284,6 +285,7 @@ struct st_lsm6dsx_settings {
 	u8 wai;
 	struct st_lsm6dsx_reg reset;
 	struct st_lsm6dsx_reg boot;
+	struct st_lsm6dsx_reg i3c_disable;
 	struct st_lsm6dsx_reg bdu;
 	u16 max_fifo_size;
 	struct {
