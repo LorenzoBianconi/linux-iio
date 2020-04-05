@@ -58,11 +58,10 @@
 #include <linux/regmap.h>
 #include <linux/bitfield.h>
 
+#include <linux/iio/common/st_sensors.h>
 #include <linux/platform_data/st_sensors_pdata.h>
 
 #include "st_lsm6dsx.h"
-
-#define ST_LSM6DSX_REG_WHOAMI_ADDR		0x0f
 
 #define ST_LSM6DSX_TS_SENSITIVITY		25000UL /* 25us */
 
@@ -1364,7 +1363,7 @@ static int st_lsm6dsx_check_whoami(struct st_lsm6dsx_hw *hw, int id,
 		return -ENODEV;
 	}
 
-	err = regmap_read(hw->regmap, ST_LSM6DSX_REG_WHOAMI_ADDR, &data);
+	err = regmap_read(hw->regmap, ST_SENSORS_DEFAULT_WAI_ADDRESS, &data);
 	if (err < 0) {
 		dev_err(hw->dev, "failed to read whoami register\n");
 		return err;
