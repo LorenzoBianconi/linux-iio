@@ -121,7 +121,7 @@ static int spmi_read_cmd(struct spmi_controller *ctrl,
 
 	if (bc > SPMI_CONTROLLER_MAX_TRANS_BYTES) {
 		dev_err(&ctrl->dev,
-			"spmi_controller supports 1..%d bytes per trans, but:%ld requested\n",
+			"spmi_controller supports 1..%d bytes per trans, but:%zu requested\n",
 			SPMI_CONTROLLER_MAX_TRANS_BYTES, bc);
 		return  -EINVAL;
 	}
@@ -175,7 +175,7 @@ done:
 	spin_unlock_irqrestore(&spmi_controller->lock, flags);
 	if (rc)
 		dev_err(&ctrl->dev,
-			"spmi read wait timeout op:0x%x slave_id:%d slave_addr:0x%x bc:%ld\n",
+			"spmi read wait timeout op:0x%x slave_id:%d slave_addr:0x%x bc:%zu\n",
 			opc, slave_id, slave_addr, bc + 1);
 	else
 		dev_dbg(&ctrl->dev, "%s: id:%d slave_addr:0x%x, read value: %*ph\n",
@@ -197,7 +197,7 @@ static int spmi_write_cmd(struct spmi_controller *ctrl,
 
 	if (bc > SPMI_CONTROLLER_MAX_TRANS_BYTES) {
 		dev_err(&ctrl->dev,
-			"spmi_controller supports 1..%d bytes per trans, but:%ld requested\n",
+			"spmi_controller supports 1..%d bytes per trans, but:%zu requested\n",
 			SPMI_CONTROLLER_MAX_TRANS_BYTES, bc);
 		return  -EINVAL;
 	}
@@ -251,7 +251,7 @@ static int spmi_write_cmd(struct spmi_controller *ctrl,
 	spin_unlock_irqrestore(&spmi_controller->lock, flags);
 
 	if (rc)
-		dev_err(&ctrl->dev, "spmi write wait timeout op:0x%x slave_id:%d slave_addr:0x%x bc:%ld\n",
+		dev_err(&ctrl->dev, "spmi write wait timeout op:0x%x slave_id:%d slave_addr:0x%x bc:%zu\n",
 			opc, slave_id, slave_addr, bc);
 	else
 		dev_dbg(&ctrl->dev, "%s: id:%d slave_addr:0x%x, wrote value: %*ph\n",
@@ -281,7 +281,8 @@ static int spmi_controller_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	spmi_controller->base = ioremap(iores->start, resource_size(iores));
+	spmi_controller->base = devm_ioremap(&pdev->dev, iores->start,
+					     resource_size(iores));
 	if (!spmi_controller->base) {
 		dev_err(&pdev->dev, "can not remap base addr!\n");
 		return -EADDRNOTAVAIL;
@@ -354,4 +355,4 @@ module_exit(spmi_controller_exit);
 
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION("1.0");
-MODULE_ALIAS("platform:spmi_controlller");
+MODULE_ALIAS("platform:spmi_controller");
