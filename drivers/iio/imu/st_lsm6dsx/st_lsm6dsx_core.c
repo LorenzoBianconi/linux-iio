@@ -2549,6 +2549,40 @@ static int st_lsm6dsx_irq_setup(struct st_lsm6dsx_hw *hw)
 	return 0;
 }
 
+static int st_lsm6dsx_init_regulators(struct device *dev)
+{
+	struct st_lsm6dsx_hw *hw = dev_get_drvdata(dev);
+	int err;
+
+	/* vdd-vddio power regulators */
+	hw->regulators[0].supply = "vdd";
+	hw->regulators[1].supply = "vddio";
+	err = devm_regulator_bulk_get(dev, ARRAY_SIZE(hw->regulators),
+				      hw->regulators);
+	if (err) {
+		dev_err(dev, "failed to get regulators: %d\n", err);
+		return err;
+	}
+
+	err = regulator_bulk_enable(ARRAY_SIZE(hw->regulators),
+				    hw->regulators);
+	if (err) {
+		dev_err(dev, "failed to enable regulators: %d\n", err);
+		return err;
+	}
+
+	msleep(50);
+
+	return 0;
+}
+
+static void st_lsm6dsx_chip_uninit(void *data)
+{
+	struct st_lsm6dsx_hw *hw = data;
+
+	regulator_bulk_disable(ARRAY_SIZE(hw->regulators), hw->regulators);
+}
+
 int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id,
 		     struct regmap *regmap)
 {
@@ -2567,6 +2601,14 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id,
 	mutex_init(&hw->fifo_lock);
 	mutex_init(&hw->conf_lock);
 	mutex_init(&hw->page_lock);
+
+	err = st_lsm6dsx_init_regulators(dev);
+	if (err)
+		return err;
+
+	err = devm_add_action_or_reset(dev, st_lsm6dsx_chip_uninit, hw);
+	if (err)
+		return err;
 
 	hw->buff = devm_kzalloc(dev, ST_LSM6DSX_BUFF_SIZE, GFP_KERNEL);
 	if (!hw->buff)
