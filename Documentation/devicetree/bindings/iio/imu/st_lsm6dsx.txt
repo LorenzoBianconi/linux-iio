@@ -20,6 +20,10 @@ Required properties:
 - reg: i2c address of the sensor / spi cs line
 
 Optional properties:
+- vdd-supply: an optional regulator that needs to be on to provide VDD
+  power to the sensor.
+- vddio-supply: an optional regulator that needs to be on to provide the
+  VDD IO power to the sensor.
 - st,drdy-int-pin: the pin on the package that will be used to signal
   "data ready" (valid values: 1 or 2).
 - st,pullups : enable/disable internal i2c controller pullup resistors.
