@@ -195,6 +195,10 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 		},
 		.fifo_ops = {
 			.max_fifo_size = 32,
+			.fifo_mode = {
+				.addr = 0x2e,
+				.mask = GENMASK(7, 5),
+			},
 		},
 	},
 	{
@@ -322,6 +326,10 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 		.fifo_ops = {
 			.update_fifo = st_lsm6dsx_update_fifo,
 			.read_fifo = st_lsm6dsx_read_fifo,
+			.fifo_mode = {
+				.addr = 0x0a,
+				.mask = GENMASK(2, 0),
+			},
 			.fifo_th = {
 				.addr = 0x06,
 				.mask = GENMASK(11, 0),
@@ -488,6 +496,10 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 		.fifo_ops = {
 			.update_fifo = st_lsm6dsx_update_fifo,
 			.read_fifo = st_lsm6dsx_read_fifo,
+			.fifo_mode = {
+				.addr = 0x0a,
+				.mask = GENMASK(2, 0),
+			},
 			.fifo_th = {
 				.addr = 0x06,
 				.mask = GENMASK(11, 0),
@@ -670,6 +682,10 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 		.fifo_ops = {
 			.update_fifo = st_lsm6dsx_update_fifo,
 			.read_fifo = st_lsm6dsx_read_fifo,
+			.fifo_mode = {
+				.addr = 0x0a,
+				.mask = GENMASK(2, 0),
+			},
 			.fifo_th = {
 				.addr = 0x06,
 				.mask = GENMASK(10, 0),
@@ -903,6 +919,10 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 		.fifo_ops = {
 			.update_fifo = st_lsm6dsx_update_fifo,
 			.read_fifo = st_lsm6dsx_read_tagged_fifo,
+			.fifo_mode = {
+				.addr = 0x0a,
+				.mask = GENMASK(2, 0),
+			},
 			.fifo_th = {
 				.addr = 0x07,
 				.mask = GENMASK(8, 0),
@@ -1112,6 +1132,10 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 		.fifo_ops = {
 			.update_fifo = st_lsm6dsx_update_fifo,
 			.read_fifo = st_lsm6dsx_read_tagged_fifo,
+			.fifo_mode = {
+				.addr = 0x0a,
+				.mask = GENMASK(2, 0),
+			},
 			.fifo_th = {
 				.addr = 0x07,
 				.mask = GENMASK(8, 0),

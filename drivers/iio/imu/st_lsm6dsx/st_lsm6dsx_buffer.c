@@ -187,11 +187,11 @@ static int st_lsm6dsx_update_decimators(struct st_lsm6dsx_hw *hw)
 static int st_lsm6dsx_set_fifo_mode(struct st_lsm6dsx_hw *hw,
 				    enum st_lsm6dsx_fifo_mode fifo_mode)
 {
+	const struct st_lsm6dsx_reg *reg = &hw->settings->fifo_ops.fifo_mode;
 	unsigned int data;
 
-	data = FIELD_PREP(ST_LSM6DSX_FIFO_MODE_MASK, fifo_mode);
-	return st_lsm6dsx_update_bits_locked(hw, ST_LSM6DSX_REG_FIFO_MODE_ADDR,
-					     ST_LSM6DSX_FIFO_MODE_MASK, data);
+	data = ST_LSM6DSX_SHIFT_VAL(fifo_mode, reg->mask);
+	return st_lsm6dsx_update_bits_locked(hw, reg->addr, reg->mask, data);
 }
 
 static int st_lsm6dsx_set_fifo_odr(struct st_lsm6dsx_sensor *sensor,
