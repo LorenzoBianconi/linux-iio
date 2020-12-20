@@ -232,6 +232,7 @@ int st_lsm6dsx_update_watermark(struct st_lsm6dsx_sensor *sensor, u16 watermark)
 {
 	u16 fifo_watermark = ~0, cur_watermark, fifo_th_mask;
 	struct st_lsm6dsx_hw *hw = sensor->hw;
+	const struct st_lsm6dsx_fifo_ops *fifo_ops = &hw->settings->fifo_ops;
 	struct st_lsm6dsx_sensor *cur_sensor;
 	int i, err, data;
 	__le16 wdata;
@@ -256,21 +257,29 @@ int st_lsm6dsx_update_watermark(struct st_lsm6dsx_sensor *sensor, u16 watermark)
 
 	fifo_watermark = max_t(u16, fifo_watermark, hw->sip);
 	fifo_watermark = (fifo_watermark / hw->sip) * hw->sip;
-	fifo_watermark = fifo_watermark * hw->settings->fifo_ops.th_wl;
+	fifo_watermark = fifo_watermark * fifo_ops->th_wl;
+
+	if (__ilog2_u32(fifo_ops->max_fifo_size) < 8) {
+		unsigned int val;
+
+		val = ST_LSM6DSX_SHIFT_VAL(fifo_watermark,
+					   fifo_ops->fifo_th.mask);
+		return st_lsm6dsx_update_bits_locked(hw,
+					fifo_ops->fifo_th.addr,
+					fifo_ops->fifo_th.mask, val);
+	}
 
 	mutex_lock(&hw->page_lock);
-	err = regmap_read(hw->regmap, hw->settings->fifo_ops.fifo_th.addr + 1,
-			  &data);
+	err = regmap_read(hw->regmap, fifo_ops->fifo_th.addr + 1, &data);
 	if (err < 0)
 		goto out;
 
-	fifo_th_mask = hw->settings->fifo_ops.fifo_th.mask;
+	fifo_th_mask = fifo_ops->fifo_th.mask;
 	fifo_watermark = ((data << 8) & ~fifo_th_mask) |
 			 (fifo_watermark & fifo_th_mask);
 
 	wdata = cpu_to_le16(fifo_watermark);
-	err = regmap_bulk_write(hw->regmap,
-				hw->settings->fifo_ops.fifo_th.addr,
+	err = regmap_bulk_write(hw->regmap, fifo_ops->fifo_th.addr,
 				&wdata, sizeof(wdata));
 out:
 	mutex_unlock(&hw->page_lock);
@@ -649,6 +658,76 @@ int st_lsm6dsx_flush_fifo(struct st_lsm6dsx_hw *hw)
 	err = st_lsm6dsx_set_fifo_mode(hw, ST_LSM6DSX_FIFO_BYPASS);
 
 	mutex_unlock(&hw->fifo_lock);
+
+	return err;
+}
+
+static void
+st_lsm6ds0_update_pattern(struct st_lsm6dsx_sensor *sensor, bool enable)
+{
+	struct st_lsm6dsx_hw *hw = sensor->hw;
+
+	switch (sensor->id) {
+	case ST_LSM6DSX_ID_ACC:
+		if (hw->enable_mask & BIT(ST_LSM6DSX_ID_GYRO))
+			hw->sip = 2;
+		else if (enable)
+			hw->sip = 1;
+		else
+			hw->sip = 0;
+		break;
+	case ST_LSM6DSX_ID_GYRO:
+		if (enable)
+			hw->sip = 2;
+		else if (hw->enable_mask & BIT(ST_LSM6DSX_ID_ACC))
+			hw->sip = 1;
+		else
+			hw->sip = 0;
+		break;
+	default:
+		break;
+	}
+}
+
+int st_lsm6ds0_update_fifo(struct st_lsm6dsx_sensor *sensor, bool enable)
+{
+	struct st_lsm6dsx_hw *hw = sensor->hw;
+	u8 fifo_mask;
+	int err;
+
+	mutex_lock(&hw->conf_lock);
+
+	if (enable)
+		fifo_mask = hw->fifo_mask | BIT(sensor->id);
+	else
+		fifo_mask = hw->fifo_mask & ~BIT(sensor->id);
+
+	if (hw->fifo_mask) {
+		err = st_lsm6dsx_flush_fifo(hw);
+		if (err < 0)
+			goto out;
+	}
+
+	err = st_lsm6dsx_sensor_set_enable(sensor, enable);
+	if (err < 0)
+		goto out;
+
+	st_lsm6ds0_update_pattern(sensor, enable);
+
+	err = st_lsm6dsx_update_watermark(sensor, sensor->watermark);
+	if (err < 0)
+		goto out;
+
+	if (fifo_mask) {
+		err = st_lsm6dsx_set_fifo_mode(hw, ST_LSM6DSX_FIFO_CONT);
+		if (err < 0)
+			goto out;
+	}
+
+	hw->fifo_mask = fifo_mask;
+
+out:
+	mutex_unlock(&hw->conf_lock);
 
 	return err;
 }

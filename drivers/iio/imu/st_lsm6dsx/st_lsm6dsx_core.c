@@ -194,11 +194,25 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 			},
 		},
 		.fifo_ops = {
-			.max_fifo_size = 32,
+			.update_fifo = st_lsm6ds0_update_fifo,
+			.fifo_en = {
+				.addr = 0x23,
+				.mask = BIT(1),
+			},
 			.fifo_mode = {
 				.addr = 0x2e,
 				.mask = GENMASK(7, 5),
 			},
+			.fifo_th = {
+				.addr = 0x2e,
+				.mask = GENMASK(4, 0),
+			},
+			.fifo_diff = {
+				.addr = 0x2f,
+				.mask = GENMASK(5, 0),
+			},
+			.max_fifo_size = 32,
+			.th_wl = 1,
 		},
 	},
 	{
@@ -1987,6 +2001,15 @@ static int st_lsm6dsx_init_device(struct st_lsm6dsx_hw *hw)
 	/* enable drdy-mas if available */
 	if (hw->settings->drdy_mask.addr) {
 		reg = &hw->settings->drdy_mask;
+		err = regmap_update_bits(hw->regmap, reg->addr, reg->mask,
+					 ST_LSM6DSX_SHIFT_VAL(1, reg->mask));
+		if (err < 0)
+			return err;
+	}
+
+	/* enable FIFO if requested */
+	if (hw->settings->fifo_ops.fifo_en.addr) {
+		reg = &hw->settings->fifo_ops.fifo_en;
 		err = regmap_update_bits(hw->regmap, reg->addr, reg->mask,
 					 ST_LSM6DSX_SHIFT_VAL(1, reg->mask));
 		if (err < 0)

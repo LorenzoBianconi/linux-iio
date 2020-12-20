@@ -141,6 +141,7 @@ struct st_lsm6dsx_fs_table_entry {
  * struct st_lsm6dsx_fifo_ops - ST IMU FIFO settings
  * @update_fifo: Update FIFO configuration callback.
  * @read_fifo: Read FIFO callback.
+ * @fifo_en: FIFO enable register.
  * @fifo_mode: FIFO mode register.
  * @fifo_th: FIFO threshold register info (addr + mask).
  * @fifo_diff: FIFO diff status register info (addr + mask).
@@ -150,6 +151,7 @@ struct st_lsm6dsx_fs_table_entry {
 struct st_lsm6dsx_fifo_ops {
 	int (*update_fifo)(struct st_lsm6dsx_sensor *sensor, bool enable);
 	int (*read_fifo)(struct st_lsm6dsx_hw *hw);
+	struct st_lsm6dsx_reg fifo_en;
 	struct st_lsm6dsx_reg fifo_mode;
 	struct {
 		u8 addr;
@@ -448,6 +450,7 @@ int st_lsm6dsx_fifo_setup(struct st_lsm6dsx_hw *hw);
 int st_lsm6dsx_set_watermark(struct iio_dev *iio_dev, unsigned int val);
 int st_lsm6dsx_update_watermark(struct st_lsm6dsx_sensor *sensor,
 				u16 watermark);
+int st_lsm6ds0_update_fifo(struct st_lsm6dsx_sensor *sensor, bool enable);
 int st_lsm6dsx_update_fifo(struct st_lsm6dsx_sensor *sensor, bool enable);
 int st_lsm6dsx_flush_fifo(struct st_lsm6dsx_hw *hw);
 int st_lsm6dsx_resume_fifo(struct st_lsm6dsx_hw *hw);
